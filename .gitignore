@@ -37,6 +37,7 @@ env/
 credentials.json
 service-account*.json
 *-credentials.json
+icct26-3d6153f8ac99.json
 
 # IDE
 .vscode/
