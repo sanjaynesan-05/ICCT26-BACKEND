@@ -2,6 +2,10 @@ import gspread
 import json
 import os
 from google.oauth2.service_account import Credentials
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseUpload
+import io
+import base64
 import traceback
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.responses import JSONResponse
@@ -315,25 +319,200 @@ def send_confirmation_email(to_email: str, subject: str, html_content: str) -> d
 # ============================================================
 
 def generate_team_id(client) -> str:
-    """Generate sequential Team ID (ICCT26-XXXX format)"""
+    """Generate sequential Team ID (ICCT26-0XX format)"""
     try:
-        sheet = client.open_by_key(os.getenv('SPREADSHEET_ID')).worksheet('Team Information')
-        rows = len(sheet.get_all_values())
-        team_num = str(rows).zfill(4)
+        # Get the next sequential number from Teams_Index sheet
+        sheet = client.open_by_key(os.getenv('SPREADSHEET_ID')).worksheet('Teams_Index')
+        rows = sheet.get_all_values()
+        # Skip header row, so team count is len(rows) - 1
+        team_count = len(rows) - 1
+        team_num = str(team_count + 1).zfill(3)  # 3 digits for 0XX format
         return f"ICCT26-{team_num}"
-    except:
+    except Exception as e:
+        print(f"Warning: Could not generate sequential team ID: {e}")
+        # Fallback to timestamp-based ID
         return f"ICCT26-{datetime.now().strftime('%H%M%S')}"
 
-def save_to_google_sheet(data: dict, team_id: str, players: list) -> dict:
-    """Save team and player data to Google Sheets
+# ============================================================
+# Google Drive File Upload Functions
+# ============================================================
+
+def upload_file_to_drive(file_data: str, file_name: str, folder_id: str, creds) -> dict:
+    """Upload a base64 encoded file to Google Drive
     
     Args:
-        data: Team information dict
-        team_id: Generated team ID
-        players: List of player details
-    
+        file_data: Base64 encoded file data (with or without data URI prefix)
+        file_name: Name for the file in Drive
+        folder_id: Google Drive folder ID where file will be stored
+        creds: Google credentials object
+        
     Returns:
-        dict with success status and message
+        dict with success status, file_id, and web_view_link
+    """
+    try:
+        # Build Drive service
+        drive_service = build('drive', 'v3', credentials=creds)
+        
+        # Parse base64 data
+        if ',' in file_data:
+            # Remove data URI prefix (e.g., "data:image/png;base64,")
+            header, encoded = file_data.split(',', 1)
+            file_bytes = base64.b64decode(encoded)
+            
+            # Extract mime type from header
+            if 'data:' in header and ';base64' in header:
+                mime_type = header.split('data:')[1].split(';')[0]
+            else:
+                mime_type = 'application/octet-stream'
+        else:
+            # Plain base64 without prefix
+            file_bytes = base64.b64decode(file_data)
+            mime_type = 'application/octet-stream'
+        
+        # Create file metadata
+        file_metadata = {
+            'name': file_name,
+            'parents': [folder_id]
+        }
+        
+        # Create media upload
+        media = MediaIoBaseUpload(
+            io.BytesIO(file_bytes),
+            mimetype=mime_type,
+            resumable=True
+        )
+        
+        # Upload file
+        file = drive_service.files().create(
+            body=file_metadata,
+            media_body=media,
+            fields='id, webViewLink, webContentLink'
+        ).execute()
+        
+        print(f"✅ Uploaded file '{file_name}' to Google Drive (ID: {file.get('id')})")
+        
+        return {
+            "success": True,
+            "file_id": file.get('id'),
+            "web_view_link": file.get('webViewLink'),
+            "web_content_link": file.get('webContentLink')
+        }
+        
+    except Exception as e:
+        print(f"❌ Failed to upload file '{file_name}': {str(e)}")
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+def upload_team_files_to_drive(data: dict, team_id: str, players: list, creds) -> dict:
+    """Upload all team files (pastor letter, payment receipt, player documents) to Google Drive
+    
+    Args:
+        data: Team registration data
+        team_id: Team ID for organizing files
+        players: List of player details with files
+        creds: Google credentials object
+        
+    Returns:
+        dict with upload results and file links
+    """
+    try:
+        folder_id = os.getenv('GOOGLE_DRIVE_FOLDER_ID')
+        if not folder_id:
+            print("WARNING: GOOGLE_DRIVE_FOLDER_ID not configured")
+            return {"success": False, "message": "Drive folder not configured"}
+        
+        drive_service = build('drive', 'v3', credentials=creds)
+        
+        # Create team folder
+        team_folder_metadata = {
+            'name': f"{team_id}_{data.get('teamName', 'Unknown')}",
+            'mimeType': 'application/vnd.google-apps.folder',
+            'parents': [folder_id]
+        }
+        team_folder = drive_service.files().create(
+            body=team_folder_metadata,
+            fields='id'
+        ).execute()
+        team_folder_id = team_folder.get('id')
+        print(f"✅ Created team folder: {team_folder_id}")
+        
+        results = {
+            "team_folder_id": team_folder_id,
+            "uploads": []
+        }
+        
+        # Upload pastor letter
+        if data.get('pastorLetter'):
+            result = upload_file_to_drive(
+                data['pastorLetter'],
+                f"{team_id}_Pastor_Letter.pdf",
+                team_folder_id,
+                creds
+            )
+            results["uploads"].append({"type": "pastor_letter", **result})
+        
+        # Upload payment receipt
+        if data.get('paymentReceipt'):
+            result = upload_file_to_drive(
+                data['paymentReceipt'],
+                f"{team_id}_Payment_Receipt.pdf",
+                team_folder_id,
+                creds
+            )
+            results["uploads"].append({"type": "payment_receipt", **result})
+        
+        # Upload player documents
+        for i, player in enumerate(players, 1):
+            player_name = player.get('name', f'Player{i}').replace(' ', '_')
+            
+            # Upload Aadhar card
+            if player.get('aadharFile'):
+                result = upload_file_to_drive(
+                    player['aadharFile'],
+                    f"{team_id}_Player{i}_{player_name}_Aadhar.pdf",
+                    team_folder_id,
+                    creds
+                )
+                results["uploads"].append({"type": "aadhar", "player": player_name, **result})
+            
+            # Upload Subscription card
+            if player.get('subscriptionFile'):
+                result = upload_file_to_drive(
+                    player['subscriptionFile'],
+                    f"{team_id}_Player{i}_{player_name}_Subscription.pdf",
+                    team_folder_id,
+                    creds
+                )
+                results["uploads"].append({"type": "subscription", "player": player_name, **result})
+        
+        successful_uploads = sum(1 for upload in results["uploads"] if upload.get("success", False))
+        total_uploads = len(results["uploads"])
+        
+        print(f"✅ Uploaded {successful_uploads}/{total_uploads} files to Google Drive")
+        
+        return {
+            "success": True,
+            "message": f"Uploaded {successful_uploads}/{total_uploads} files",
+            **results
+        }
+        
+    except Exception as e:
+        error_msg = f"Drive upload error: {str(e)}"
+        print(f"❌ {error_msg}")
+        print(f"Traceback: {traceback.format_exc()}")
+        return {"success": False, "message": error_msg}
+
+def save_to_google_sheet(data: dict, players: list) -> dict:
+    """Save team and player data to Google Sheets - Creates one worksheet per team
+
+    Args:
+        data: Team information dict
+        players: List of player details
+
+    Returns:
+        dict with success status, message, and team_id
     """
     try:
         spreadsheet_id = os.getenv('SPREADSHEET_ID')
@@ -356,75 +535,241 @@ def save_to_google_sheet(data: dict, team_id: str, players: list) -> dict:
             "universe_domain": os.getenv('GOOGLE_UNIVERSE_DOMAIN', 'googleapis.com')
         }
         
-        # Authenticate with Google Sheets
+        # Authenticate with Google Sheets and Drive
         creds = Credentials.from_service_account_info(
             creds_info,
-            scopes=['https://www.googleapis.com/auth/spreadsheets']
+            scopes=[
+                'https://www.googleapis.com/auth/spreadsheets',
+                'https://www.googleapis.com/auth/drive.file'
+            ]
         )
         
         client = gspread.authorize(creds)
         spreadsheet = client.open_by_key(spreadsheet_id)
         
-        # Get or create worksheets
-        try:
-            teams_sheet = spreadsheet.worksheet('Teams')
-        except:
-            teams_sheet = spreadsheet.add_worksheet('Teams', 1000, 10)
+        # Generate team ID using the client
+        team_id = generate_team_id(client)
         
-        try:
-            players_sheet = spreadsheet.worksheet('Players')
-        except:
-            players_sheet = spreadsheet.add_worksheet('Players', 1000, 10)
+        # Upload files to Google Drive first to get links
+        drive_result = upload_team_files_to_drive(data, team_id, players, creds)
         
-        # Add headers if sheets are empty
-        if teams_sheet.row_count == 0 or teams_sheet.cell(1, 1).value is None:
-            teams_sheet.append_row([
+        # Create a new worksheet for this team
+        sheet_name = f"{team_id}_{data.get('teamName', 'Team')}"[:100]  # Limit to 100 chars
+        
+        # Check if sheet already exists, if yes add a suffix
+        try:
+            team_sheet = spreadsheet.worksheet(sheet_name)
+            # Sheet exists, add timestamp suffix
+            sheet_name = f"{sheet_name}_{datetime.now().strftime('%H%M%S')}"
+        except:
+            pass
+        
+        # Create new worksheet for this team (rows: 50, columns: 10)
+        team_sheet = spreadsheet.add_worksheet(title=sheet_name, rows=50, cols=10)
+        
+        print(f"✅ Created worksheet '{sheet_name}' for team {team_id}")
+        
+        # ============================================================
+        # TEAM INFORMATION SECTION
+        # ============================================================
+        
+        captain = data.get('captain', {})
+        vice_captain = data.get('viceCaptain', {})
+        
+        # Row 1: Title
+        team_sheet.update('A1', [[f"TEAM REGISTRATION: {team_id}"]])
+        team_sheet.format('A1', {
+            "textFormat": {"bold": True, "fontSize": 14},
+            "horizontalAlignment": "CENTER"
+        })
+        team_sheet.merge_cells('A1:F1')
+        
+        # Row 3: Team Details Header
+        team_sheet.update('A3', [["TEAM INFORMATION"]])
+        team_sheet.format('A3', {"textFormat": {"bold": True, "fontSize": 12}})
+        team_sheet.merge_cells('A3:F3')
+        
+        # Rows 4-10: Team Details
+        team_info = [
+            ["Team ID:", team_id],
+            ["Team Name:", data.get('teamName', 'N/A')],
+            ["Church Name:", data.get('churchName', 'N/A')],
+            ["Registration Date:", datetime.now().strftime('%Y-%m-%d %H:%M:%S')],
+            ["Status:", "Registered"],
+            ["Total Players:", len(players)],
+            ["", ""]  # Empty row
+        ]
+        team_sheet.update('A4', team_info)
+        team_sheet.format('A4:A9', {"textFormat": {"bold": True}})
+        
+        # ============================================================
+        # CAPTAIN & VICE-CAPTAIN SECTION
+        # ============================================================
+        
+        # Row 11: Captain Header
+        team_sheet.update('A11', [["CAPTAIN DETAILS"]])
+        team_sheet.format('A11', {"textFormat": {"bold": True, "fontSize": 12}})
+        team_sheet.merge_cells('A11:F11')
+        
+        # Rows 12-15: Captain Info
+        captain_info = [
+            ["Name:", captain.get('name', 'N/A')],
+            ["Phone:", captain.get('phone', 'N/A')],
+            ["WhatsApp:", captain.get('whatsapp', 'N/A')],
+            ["Email:", captain.get('email', 'N/A')]
+        ]
+        team_sheet.update('A12', captain_info)
+        team_sheet.format('A12:A15', {"textFormat": {"bold": True}})
+        
+        # Row 17: Vice-Captain Header
+        team_sheet.update('A17', [["VICE-CAPTAIN DETAILS"]])
+        team_sheet.format('A17', {"textFormat": {"bold": True, "fontSize": 12}})
+        team_sheet.merge_cells('A17:F17')
+        
+        # Rows 18-21: Vice-Captain Info
+        vice_captain_info = [
+            ["Name:", vice_captain.get('name', 'N/A')],
+            ["Phone:", vice_captain.get('phone', 'N/A')],
+            ["WhatsApp:", vice_captain.get('whatsapp', 'N/A')],
+            ["Email:", vice_captain.get('email', 'N/A')]
+        ]
+        team_sheet.update('A18', vice_captain_info)
+        team_sheet.format('A18:A21', {"textFormat": {"bold": True}})
+        
+        # ============================================================
+        # UPLOADED FILES SECTION
+        # ============================================================
+        
+        # Row 23: Files Header
+        team_sheet.update('A23', [["UPLOADED FILES"]])
+        team_sheet.format('A23', {"textFormat": {"bold": True, "fontSize": 12}})
+        team_sheet.merge_cells('A23:F23')
+        
+        # Rows 24+: File Links
+        file_links = []
+        if drive_result.get('success'):
+            uploads = drive_result.get('uploads', [])
+            
+            # Pastor Letter
+            pastor_letter = next((u for u in uploads if u.get('type') == 'pastor_letter'), None)
+            if pastor_letter and pastor_letter.get('success'):
+                file_links.append(["Pastor Letter:", pastor_letter.get('web_view_link', 'N/A')])
+            else:
+                file_links.append(["Pastor Letter:", "Not uploaded"])
+            
+            # Payment Receipt
+            payment_receipt = next((u for u in uploads if u.get('type') == 'payment_receipt'), None)
+            if payment_receipt and payment_receipt.get('success'):
+                file_links.append(["Payment Receipt:", payment_receipt.get('web_view_link', 'N/A')])
+            else:
+                file_links.append(["Payment Receipt:", "Not uploaded"])
+        else:
+            file_links.append(["Files:", "Upload failed - " + drive_result.get('message', 'Unknown error')])
+        
+        team_sheet.update('A24', file_links)
+        team_sheet.format('A24:A25', {"textFormat": {"bold": True}})
+        
+        # ============================================================
+        # PLAYERS SECTION
+        # ============================================================
+        
+        # Row 27: Players Header
+        team_sheet.update('A27', [["PLAYERS LIST"]])
+        team_sheet.format('A27', {"textFormat": {"bold": True, "fontSize": 12}})
+        team_sheet.merge_cells('A27:F27')
+        
+        # Row 28: Column Headers
+        player_headers = [["#", "Name", "Age", "Phone", "Role", "Aadhar Link", "Subscription Link"]]
+        team_sheet.update('A28', player_headers)
+        team_sheet.format('A28:G28', {
+            "textFormat": {"bold": True},
+            "backgroundColor": {"red": 0.9, "green": 0.9, "blue": 0.9}
+        })
+        
+        # Rows 29+: Player Data
+        player_data = []
+        uploads = drive_result.get('uploads', []) if drive_result.get('success') else []
+        
+        for i, player in enumerate(players, 1):
+            player_name = player.get('name', 'N/A')
+            
+            # Find Aadhar and Subscription links for this player
+            aadhar_link = "Not uploaded"
+            subscription_link = "Not uploaded"
+            
+            for upload in uploads:
+                if upload.get('type') == 'aadhar' and upload.get('player', '').replace('_', ' ') == player_name.replace(' ', '_'):
+                    if upload.get('success'):
+                        aadhar_link = upload.get('web_view_link', 'Error')
+                    break
+            
+            for upload in uploads:
+                if upload.get('type') == 'subscription' and upload.get('player', '').replace('_', ' ') == player_name.replace(' ', '_'):
+                    if upload.get('success'):
+                        subscription_link = upload.get('web_view_link', 'Error')
+                    break
+            
+            player_data.append([
+                i,
+                player_name,
+                player.get('age', 'N/A'),
+                player.get('phone', 'N/A'),
+                player.get('role', 'N/A'),
+                aadhar_link,
+                subscription_link
+            ])
+        
+        team_sheet.update('A29', player_data)
+        
+        # Auto-resize columns
+        team_sheet.columns_auto_resize(0, 6)
+        
+        print(f"✅ Saved complete team data to worksheet '{sheet_name}'")
+        
+        # ============================================================
+        # UPDATE MASTER INDEX SHEET
+        # ============================================================
+        
+        # Get or create master index sheet
+        try:
+            index_sheet = spreadsheet.worksheet('Teams_Index')
+        except:
+            index_sheet = spreadsheet.add_worksheet('Teams_Index', 1000, 10)
+            # Add headers
+            index_sheet.update('A1', [[
                 'Team ID', 'Team Name', 'Church Name', 'Captain Name', 
-                'Vice-Captain Name', 'Player Count', 'Status', 'Registration Date'
-            ])
+                'Vice-Captain Name', 'Player Count', 'Status', 'Registration Date', 'Sheet Link'
+            ]])
+            index_sheet.format('A1:I1', {
+                "textFormat": {"bold": True},
+                "backgroundColor": {"red": 0.2, "green": 0.6, "blue": 0.9}
+            })
         
-        if players_sheet.row_count == 0 or players_sheet.cell(1, 1).value is None:
-            players_sheet.append_row([
-                'Team ID', 'Player Name', 'Age', 'Phone', 'Role'
-            ])
-        
-        # Prepare team data for Teams sheet
-        captain_name = data.get('captain', {}).get('name', 'N/A')
-        vice_captain_name = data.get('viceCaptain', {}).get('name', 'N/A')
-        
-        team_row = [
+        # Add entry to index
+        sheet_link = f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/edit#gid={team_sheet.id}"
+        index_row = [
             team_id,
             data.get('teamName', 'N/A'),
             data.get('churchName', 'N/A'),
-            captain_name,
-            vice_captain_name,
+            captain.get('name', 'N/A'),
+            vice_captain.get('name', 'N/A'),
             len(players),
             'Registered',
-            datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            sheet_link
         ]
+        index_sheet.append_row(index_row)
         
-        # Save team to Teams sheet
-        teams_sheet.append_row(team_row)
-        print(f"✅ Saved team {team_id} to Google Sheets (Teams sheet)")
-        
-        # Save players to Players sheet
-        for i, player in enumerate(players):
-            player_row = [
-                team_id,
-                player.get('name', 'N/A'),
-                player.get('age', 'N/A'),
-                player.get('phone', 'N/A'),
-                player.get('role', 'N/A')
-            ]
-            players_sheet.append_row(player_row)
-        
-        print(f"✅ Saved {len(players)} players to Google Sheets (Players sheet)")
+        print(f"✅ Updated Teams_Index with link to '{sheet_name}'")
         
         return {
             "success": True,
-            "message": f"Team {team_id} and {len(players)} players saved to Google Sheets",
+            "message": f"Team {team_id} saved to dedicated worksheet '{sheet_name}'",
             "team_id": team_id,
-            "players_count": len(players)
+            "players_count": len(players),
+            "sheet_name": sheet_name,
+            "sheet_link": sheet_link,
+            "drive_upload": drive_result
         }
         
     except Exception as e:
@@ -445,8 +790,8 @@ def process_registration_queue():
             if not registration_queue.empty():
                 item = registration_queue.get(timeout=1)
                 team_data, players, callback = item
-                team_id = generate_team_id(None)
-                result = save_to_google_sheet(team_data, team_id, players)
+                result = save_to_google_sheet(team_data, players)
+                team_id = result.get('team_id', 'Unknown')
                 
                 if result.get('success'):
                     html_content = create_email_template_team(team_data, team_id, players)

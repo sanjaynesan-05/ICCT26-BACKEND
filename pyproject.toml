@@ -1,7 +1,7 @@
 [project]
-name = "ctf-backend"
+name = "icct26-backend"
 version = "1.0.0"
-description = "CTF Registration API - Asynchronous student registration system"
+description = "ICCT26 Cricket Tournament Backend API - Asynchronous team registration system"
 readme = "README.md"
 requires-python = ">=3.8"
 dependencies = [
@@ -12,6 +12,7 @@ dependencies = [
     "google-auth>=2.23.4",
     "google-auth-oauthlib>=1.1.0",
     "google-auth-httplib2>=0.1.1",
+    "google-api-python-client>=2.108.0",
     "python-dotenv>=1.0.0",
 ]
 
