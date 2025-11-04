@@ -336,17 +336,102 @@ def save_to_google_sheet(data: dict, team_id: str, players: list) -> dict:
         dict with success status and message
     """
     try:
-        if not os.getenv('SPREADSHEET_ID'):
+        spreadsheet_id = os.getenv('SPREADSHEET_ID')
+        if not spreadsheet_id:
             print("WARNING: SPREADSHEET_ID not configured")
             return {"success": False, "message": "Spreadsheet not configured"}
         
-        # Placeholder for Google Sheets integration
-        print(f"[PLACEHOLDER] Saving team {team_id} to Google Sheets")
-        return {"success": True, "message": "Data saved (placeholder)"}
+        # Load Google Sheets credentials
+        creds_info = {
+            "type": os.getenv('GOOGLE_CREDENTIALS_TYPE', 'service_account'),
+            "project_id": os.getenv('GOOGLE_PROJECT_ID'),
+            "private_key_id": os.getenv('GOOGLE_PRIVATE_KEY_ID'),
+            "private_key": os.getenv('GOOGLE_PRIVATE_KEY').replace('\\n', '\n'),
+            "client_email": os.getenv('GOOGLE_CLIENT_EMAIL'),
+            "client_id": os.getenv('GOOGLE_CLIENT_ID'),
+            "auth_uri": os.getenv('GOOGLE_AUTH_URI'),
+            "token_uri": os.getenv('GOOGLE_TOKEN_URI'),
+            "auth_provider_x509_cert_url": os.getenv('GOOGLE_AUTH_PROVIDER_X509_CERT_URL'),
+            "client_x509_cert_url": os.getenv('GOOGLE_CLIENT_X509_CERT_URL'),
+            "universe_domain": os.getenv('GOOGLE_UNIVERSE_DOMAIN', 'googleapis.com')
+        }
+        
+        # Authenticate with Google Sheets
+        creds = Credentials.from_service_account_info(
+            creds_info,
+            scopes=['https://www.googleapis.com/auth/spreadsheets']
+        )
+        
+        client = gspread.authorize(creds)
+        spreadsheet = client.open_by_key(spreadsheet_id)
+        
+        # Get or create worksheets
+        try:
+            teams_sheet = spreadsheet.worksheet('Teams')
+        except:
+            teams_sheet = spreadsheet.add_worksheet('Teams', 1000, 10)
+        
+        try:
+            players_sheet = spreadsheet.worksheet('Players')
+        except:
+            players_sheet = spreadsheet.add_worksheet('Players', 1000, 10)
+        
+        # Add headers if sheets are empty
+        if teams_sheet.row_count == 0 or teams_sheet.cell(1, 1).value is None:
+            teams_sheet.append_row([
+                'Team ID', 'Team Name', 'Church Name', 'Captain Name', 
+                'Vice-Captain Name', 'Player Count', 'Status', 'Registration Date'
+            ])
+        
+        if players_sheet.row_count == 0 or players_sheet.cell(1, 1).value is None:
+            players_sheet.append_row([
+                'Team ID', 'Player Name', 'Age', 'Phone', 'Role'
+            ])
+        
+        # Prepare team data for Teams sheet
+        captain_name = data.get('captain', {}).get('name', 'N/A')
+        vice_captain_name = data.get('viceCaptain', {}).get('name', 'N/A')
+        
+        team_row = [
+            team_id,
+            data.get('teamName', 'N/A'),
+            data.get('churchName', 'N/A'),
+            captain_name,
+            vice_captain_name,
+            len(players),
+            'Registered',
+            datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        ]
+        
+        # Save team to Teams sheet
+        teams_sheet.append_row(team_row)
+        print(f"✅ Saved team {team_id} to Google Sheets (Teams sheet)")
+        
+        # Save players to Players sheet
+        for i, player in enumerate(players):
+            player_row = [
+                team_id,
+                player.get('name', 'N/A'),
+                player.get('age', 'N/A'),
+                player.get('phone', 'N/A'),
+                player.get('role', 'N/A')
+            ]
+            players_sheet.append_row(player_row)
+        
+        print(f"✅ Saved {len(players)} players to Google Sheets (Players sheet)")
+        
+        return {
+            "success": True,
+            "message": f"Team {team_id} and {len(players)} players saved to Google Sheets",
+            "team_id": team_id,
+            "players_count": len(players)
+        }
         
     except Exception as e:
-        print(f"Sheet error: {str(e)}")
-        return {"success": False, "message": str(e)}
+        error_msg = f"Sheet error: {str(e)}"
+        print(f"❌ {error_msg}")
+        print(f"Traceback: {traceback.format_exc()}")
+        return {"success": False, "message": error_msg}
 
 # ============================================================
 # Background Queue Processing
@@ -471,7 +556,7 @@ async def queue_status():
 async def startup_event():
     """Initialize background worker thread on startup"""
     print("\n" + "="*60)
-    print("🏏 ICCT26 Cricket Tournament Registration API Starting...")
+    print("ICCT26 Cricket Tournament Registration API Starting...")
     print("="*60)
     print("Event: ICCT26 Cricket Tournament 2026")
     print("Organizer: CSI St. Peter's Church, Coimbatore")
@@ -482,17 +567,17 @@ async def startup_event():
     
     try:
         load_dotenv()
-        print("✓ Environment variables loaded")
+        print("[OK] Environment variables loaded")
         
         # Start background worker
         worker_thread = threading.Thread(target=process_registration_queue, daemon=True)
         worker_thread.start()
-        print("✓ Background worker thread started")
-        print("✓ Queue system initialized")
-        print("✓ Google Sheets integration ready")
+        print("[OK] Background worker thread started")
+        print("[OK] Queue system initialized")
+        print("[OK] Google Sheets integration ready")
         
         if os.getenv('SMTP_USERNAME'):
-            print("✓ SMTP email service configured")
+            print("[OK] SMTP email service configured")
         else:
             print("⚠ SMTP not configured (emails disabled)")
         
