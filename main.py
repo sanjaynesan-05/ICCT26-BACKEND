@@ -937,9 +937,6 @@ async def shutdown_event():
     print("\nICCT26 Cricket Tournament Registration API shutting down...")
 
 if __name__ == "__main__":
-    uvicorn.run(
-        "main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=False
-    )
+    import os
+    port = int(os.environ.get("PORT", 8000))  # Use Render-assigned port if available
+    uvicorn.run("main:app", host="0.0.0.0", port=port)
