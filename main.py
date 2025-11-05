@@ -787,22 +787,46 @@ def process_registration_queue():
     print("Started team registration queue processor")
     while True:
         try:
-            if not registration_queue.empty():
+            # Try to get an item from the queue with a timeout
+            try:
                 item = registration_queue.get(timeout=1)
                 team_data, players, callback = item
+                print(f"\n{'='*60}")
+                print(f"📝 Processing registration for team: {team_data.get('teamName', 'Unknown')}")
+                print(f"{'='*60}")
+                
                 result = save_to_google_sheet(team_data, players)
                 team_id = result.get('team_id', 'Unknown')
-                
+
                 if result.get('success'):
+                    print(f"\n✅ Successfully saved to Google Sheets. Team ID: {team_id}")
                     html_content = create_email_template_team(team_data, team_id, players)
                     captain_email = team_data.get('captain', {}).get('email', '')
                     if captain_email:
-                        send_confirmation_email(captain_email, f"ICCT26 Registration Confirmed - {team_id}", html_content)
-                
+                        print(f"📧 Sending confirmation email to: {captain_email}")
+                        email_result = send_confirmation_email(captain_email, f"ICCT26 Registration Confirmed - {team_id}", html_content)
+                        if email_result.get('success'):
+                            print("✅ Email sent successfully")
+                        else:
+                            print(f"⚠️  Email sending warning: {email_result.get('message', 'Unknown')}")
+                    else:
+                        print("⚠️  No captain email provided, skipping email")
+                else:
+                    print(f"\n❌ Failed to save to Google Sheets: {result}")
+
                 if callback:
                     callback(result)
-        except:
-            pass
+            except queue.Empty:
+                # Queue is empty, just continue waiting
+                pass
+        except Exception as e:
+            print(f"\n❌ Error processing registration: {str(e)}")
+            import traceback
+            traceback.print_exc()
+        
+        # Small sleep to prevent CPU spinning
+        import time
+        time.sleep(0.1)
 
 # ============================================================
 # FastAPI Application Setup
@@ -817,9 +841,9 @@ app = FastAPI(
 # CORS Configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "https://icct26.netlify.app"],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -919,28 +943,40 @@ async def startup_event():
     # Read port from environment to reflect Render-assigned dynamic port in logs
     port = os.environ.get('PORT', '8000')
     print(f"Port: {port}")
-    print("CORS Origins: *")
+    print("CORS Origins: http://localhost:3000, https://icct26.netlify.app")
     print("="*60)
-    
+
     try:
         load_dotenv()
         print("[OK] Environment variables loaded")
-        
+
+        # Test Google credentials
+        try:
+            creds = Credentials.from_service_account_file('icct26-3d6153f8ac99.json')
+            print("[OK] Google credentials loaded")
+        except Exception as e:
+            print(f"[ERROR] Google credentials failed: {e}")
+            return
+
         # Start background worker
+        print("Starting background worker...")
         worker_thread = threading.Thread(target=process_registration_queue, daemon=True)
         worker_thread.start()
         print("[OK] Background worker thread started")
         print("[OK] Queue system initialized")
         print("[OK] Google Sheets integration ready")
-        
+
         if os.getenv('SMTP_USERNAME'):
             print("[OK] SMTP email service configured")
         else:
             print("⚠ SMTP not configured (emails disabled)")
-        
+
     except Exception as e:
-        print(f"⚠ Startup warning: {str(e)}")
-    
+        print(f"[ERROR] Startup failed: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return
+
     print("="*60 + "\n")
 
 @app.on_event("shutdown")
