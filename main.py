@@ -906,7 +906,9 @@ async def startup_event():
     print("Event: ICCT26 Cricket Tournament 2026")
     print("Organizer: CSI St. Peter's Church, Coimbatore")
     print("Environment: DEVELOPMENT")
-    print("Port: 8000")
+    # Read port from environment to reflect Render-assigned dynamic port in logs
+    port = os.environ.get('PORT', '8000')
+    print(f"Port: {port}")
     print("CORS Origins: *")
     print("="*60)
     
