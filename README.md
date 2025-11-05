@@ -1,234 +1,464 @@
-# 🏏 ICCT26 Cricket Tournament Backend API# 🏏 ICCT26 Cricket Tournament Backend API
+# ICCT26 Cricket Tournament Backend# 🏏 ICCT26 Cricket Tournament Backend API# 🏏 ICCT26 Cricket Tournament Backend API
 
 
 
-**FastAPI-based asynchronous team registration system** for the **ICCT26 Cricket Tournament** organized by **CSI St. Peter's Church, Coimbatore**.**FastAPI-based asynchronous team registration system** for the **ICCT26 Cricket Tournament** organized by **CSI St. Peter's Church, Coimbatore**.
+A FastAPI-based registration system with PostgreSQL database and SMTP email notifications.
 
 
 
-## 🎯 Event Details## 🎯 Event Details
+## Features**FastAPI-based asynchronous team registration system** for the **ICCT26 Cricket Tournament** organized by **CSI St. Peter's Church, Coimbatore**.**FastAPI-based asynchronous team registration system** for the **ICCT26 Cricket Tournament** organized by **CSI St. Peter's Church, Coimbatore**.
 
-- **Event:** ICCT26 Cricket Tournament 2026
+
+
+- ✅ Team registration with validation (11-15 players)
+
+- ✅ PostgreSQL database storage
+
+- ✅ SMTP email confirmations## 🎯 Event Details## 🎯 Event Details
+
+- ✅ Pydantic data validation
+
+- ✅ CORS support for frontend integration- **Event:** ICCT26 Cricket Tournament 2026
+
+- ✅ Async database operations
 
 - **Event:** ICCT26 Cricket Tournament 2026- **Format:** Red Tennis Ball Cricket
 
+## Database Schema
+
 - **Format:** Red Tennis Ball Cricket- **Dates:** January 24-26, 2026
+
+### Tables
 
 - **Dates:** January 24-26, 2026- **Location:** CSI St. Peter's Church Cricket Ground, Coimbatore, Tamil Nadu
 
-- **Location:** CSI St. Peter's Church Cricket Ground, Coimbatore, Tamil Nadu- **Registration Fee:** ₹2,000 per team
+1. **team_registrations**
 
-- **Registration Fee:** ₹2,000 per team- **Teams per Church:** 1-2 teams
+   - team_id (unique)- **Location:** CSI St. Peter's Church Cricket Ground, Coimbatore, Tamil Nadu- **Registration Fee:** ₹2,000 per team
 
-- **Teams per Church:** 1-2 teams- **Players per Team:** 11-15 players
+   - church_name
+
+   - team_name- **Registration Fee:** ₹2,000 per team- **Teams per Church:** 1-2 teams
+
+   - pastor_letter (optional)
+
+   - payment_receipt (optional)- **Teams per Church:** 1-2 teams- **Players per Team:** 11-15 players
+
+   - created_at, updated_at
 
 - **Players per Team:** 11-15 players- **Player Age Range:** 15-60 years
 
-- **Player Age Range:** 15-60 years
+2. **captains**
+
+   - name, phone, whatsapp, email- **Player Age Range:** 15-60 years
+
+   - linked to team_registration
 
 ---
 
----
+3. **vice_captains**
+
+   - name, phone, whatsapp, email---
+
+   - linked to team_registration
 
 ## ⚡ Quick Start
 
-## ⚡ Quick Start
+4. **players**
 
-### 1. Installation
+   - name, age, phone, role## ⚡ Quick Start
 
-### 1. Installation
+   - aadhar_file, subscription_file (optional)
 
-```bash
+   - linked to team_registration### 1. Installation
 
-```bash# Clone repository
 
-git clone <your-repo-url>git clone <your-repo-url>
 
-cd icct26-backendcd icct26-backend
+## Setup### 1. Installation
 
-python -m venv venv
 
-venv\Scripts\activate# Create virtual environment
 
-pip install -r requirements.txtpython -m venv venv
+### 1. Install Dependencies```bash
 
-```
 
-# Activate virtual environment
 
-### 2. Configuration# Windows:
-
-venv\Scripts\activate
-
-```bash# macOS/Linux:
-
-cp .env.example .envsource venv/bin/activate
-
-# Edit .env with Google credentials and SMTP settings
-
-```# Install dependencies
+```bash```bash# Clone repository
 
 pip install -r requirements.txt
 
+```git clone <your-repo-url>git clone <your-repo-url>
+
+
+
+### 2. PostgreSQL Setupcd icct26-backendcd icct26-backend
+
+
+
+Install PostgreSQL and create a database:python -m venv venv
+
+
+
+```bashvenv\Scripts\activate# Create virtual environment
+
+# Install PostgreSQL (Ubuntu/Debian)
+
+sudo apt-get install postgresql postgresql-contribpip install -r requirements.txtpython -m venv venv
+
+
+
+# Or install PostgreSQL (macOS with Homebrew)```
+
+brew install postgresql
+
+# Activate virtual environment
+
+# Or install PostgreSQL (Windows)
+
+# Download from: https://www.postgresql.org/download/windows/### 2. Configuration# Windows:
+
+
+
+# Start PostgreSQL servicevenv\Scripts\activate
+
+sudo systemctl start postgresql  # Linux
+
+brew services start postgresql  # macOS```bash# macOS/Linux:
+
+# Windows: Start from Services panel
+
+cp .env.example .envsource venv/bin/activate
+
+# Create database
+
+createdb icct26_db# Edit .env with Google credentials and SMTP settings
+
+```
+
+```# Install dependencies
+
+### 3. Environment Configuration
+
+pip install -r requirements.txt
+
+Update `.env` file:
+
 ### 3. Setup Google Credentials```
 
+```env
 
+# Database Configuration
+
+DATABASE_URL=postgresql+asyncpg://username:password@localhost/icct26_db
 
 See [Google Credentials Setup Guide](./docs/GOOGLE_CREDENTIALS_SETUP.md) for detailed instructions.### 2. Configuration
 
+# SMTP Configuration
+
+SMTP_SERVER=smtp.gmail.com
+
+SMTP_PORT=587
+
+SMTP_USERNAME=your-email@gmail.com### 4. Run Server```bash
+
+SMTP_PASSWORD=your-app-password
+
+SMTP_FROM_EMAIL=your-email@gmail.com# Copy environment template
+
+SMTP_FROM_NAME=ICCT26 Cricket Tournament
+
+``````bashcp .env.example .env
 
 
-### 4. Run Server```bash
 
-# Copy environment template
+### 4. Database Setupuvicorn main:app --reload --host 127.0.0.1 --port 8000
 
-```bashcp .env.example .env
 
-uvicorn main:app --reload --host 127.0.0.1 --port 8000
 
-```# Edit .env with your credentials:
+Run the database setup script:```# Edit .env with your credentials:
 
-# - Google Cloud service account credentials
 
-### 5. Access API# - SMTP credentials for email
 
-# - Google Sheets spreadsheet ID
+```bash# - Google Cloud service account credentials
 
-- **API Home:** <http://localhost:8000>```
+python scripts/setup_database.py
 
-- **Swagger UI:** <http://localhost:8000/docs>
+```### 5. Access API# - SMTP credentials for email
 
-- **ReDoc:** <http://localhost:8000/redoc>### 3. Setup Google Credentials
 
-- **Queue Status:** <http://localhost:8000/queue/status>
 
-See [Google Credentials Setup Guide](./docs/GOOGLE_CREDENTIALS_SETUP.md) for detailed instructions.
+### 5. Start Server# - Google Sheets spreadsheet ID
 
----
 
-### 4. Run Server
 
-## 🚀 API Endpoints
+```bash- **API Home:** <http://localhost:8000>```
 
-```bash
+python main.py
 
-### Register Team# Using Uvicorn (recommended)
+```- **Swagger UI:** <http://localhost:8000/docs>
 
-uvicorn main:app --reload --host 127.0.0.1 --port 8000
 
-```http
 
-POST /register/team# Production deployment
+Server will run on `http://localhost:8000`- **ReDoc:** <http://localhost:8000/redoc>### 3. Setup Google Credentials
 
-```uvicorn main:app --host 0.0.0.0 --port 8000
 
-```
 
-Register a cricket team with 11-15 players, captain, vice-captain, and required documents.
+## API Endpoints- **Queue Status:** <http://localhost:8000/queue/status>
 
-### 5. Access API
 
-**Request Body:**
 
-- **API Home:** <http://localhost:8000>
+### POST `/register/team`See [Google Credentials Setup Guide](./docs/GOOGLE_CREDENTIALS_SETUP.md) for detailed instructions.
 
-```json- **Swagger UI:** <http://localhost:8000/docs>
 
-{- **ReDoc:** <http://localhost:8000/redoc>
 
-  "churchName": "CSI St. Peter's Church",- **Queue Status:** <http://localhost:8000/queue/status>
+Register a cricket team with 11-15 players.---
 
-  "teamName": "Thunder Strikers",
 
-  "pastorLetter": "data:image/png;base64,...",---
 
-  "captain": {
+**Request Body:**### 4. Run Server
 
-    "name": "John Doe",## 🚀 API Endpoints
+```json
 
-    "phone": "+919876543210",
+{## 🚀 API Endpoints
 
-    "whatsapp": "919876543210",### Register Team
+  "churchName": "St. Mary's Church",
 
-    "email": "john.doe@example.com"
+  "teamName": "Warriors",```bash
 
-  },```http
+  "pastorLetter": "base64-encoded-pdf",
 
-  "viceCaptain": {POST /register/team
+  "captain": {### Register Team# Using Uvicorn (recommended)
 
-    "name": "Jane Smith",```
+    "name": "John Doe",
 
-    "phone": "+919123456789",
+    "phone": "+919876543210",uvicorn main:app --reload --host 127.0.0.1 --port 8000
 
-    "whatsapp": "919123456789",Register a cricket team with 11-15 players, captain, vice-captain, and required documents.
+    "whatsapp": "9876543210",
 
-    "email": "jane.smith@example.com"
+    "email": "captain@example.com"```http
 
-  },**Request Body:**
+  },
 
-  "players": [
-
-    {```json
-
-      "name": "Player One",{
-
-      "age": 25,  "churchName": "CSI St. Peter's Church",
-
-      "phone": "+919876543211",  "teamName": "Thunder Strikers",
-
-      "role": "Batsman",  "pastorLetter": "data:image/png;base64,...",
-
-      "aadharFile": "data:image/png;base64,...",  "captain": {
-
-      "subscriptionFile": "data:image/png;base64,..."    "name": "John Doe",
-
-    }    "phone": "+919876543210",
-
-  ],    "whatsapp": "919876543210",
-
-  "paymentReceipt": "data:image/png;base64,..."    "email": "john.doe@example.com"
-
-}  },
-
-```  "viceCaptain": {
+  "viceCaptain": {POST /register/team# Production deployment
 
     "name": "Jane Smith",
 
-**Response (Success):**    "phone": "+919123456789",
+    "phone": "+919876543211",```uvicorn main:app --host 0.0.0.0 --port 8000
 
-    "whatsapp": "919123456789",
+    "whatsapp": "9876543211",
 
-```json    "email": "jane.smith@example.com"
+    "email": "vice@example.com"```
 
-{  },
+  },
 
-  "success": true,  "players": [
+  "players": [Register a cricket team with 11-15 players, captain, vice-captain, and required documents.
 
-  "message": "Team registration queued successfully",    {
+    {
 
-  "status": "processing",      "name": "Player One",
+      "name": "Player One",### 5. Access API
 
-  "data": {      "age": 25,
+      "age": 25,
 
-    "teamName": "Thunder Strikers",      "phone": "+919876543211",
+      "phone": "+919876543212",**Request Body:**
 
-    "churchName": "CSI St. Peter's Church",      "role": "Batsman",
+      "role": "Batsman",
 
-    "captainName": "John Doe",      "aadharFile": "data:image/png;base64,...",
+      "aadharFile": "base64-encoded-pdf",- **API Home:** <http://localhost:8000>
 
-    "playerCount": 11,      "subscriptionFile": "data:image/png;base64,..."
+      "subscriptionFile": "base64-encoded-pdf"
 
-    "queuedAt": "2026-01-15T10:30:45Z"    }
+    }```json- **Swagger UI:** <http://localhost:8000/docs>
 
-  }  ],
+  ],
 
-}  "paymentReceipt": "data:image/png;base64,..."
+  "paymentReceipt": "base64-encoded-pdf"{- **ReDoc:** <http://localhost:8000/redoc>
 
-```}
+}
+
+```  "churchName": "CSI St. Peter's Church",- **Queue Status:** <http://localhost:8000/queue/status>
+
+
+
+**Response:**  "teamName": "Thunder Strikers",
+
+```json
+
+{  "pastorLetter": "data:image/png;base64,...",---
+
+  "success": true,
+
+  "message": "Team registration successful",  "captain": {
+
+  "data": {
+
+    "team_id": "ICCT26-20251105120000",    "name": "John Doe",## 🚀 API Endpoints
+
+    "team_name": "Warriors",
+
+    "captain_name": "John Doe",    "phone": "+919876543210",
+
+    "players_count": 11,
+
+    "registered_at": "2025-11-05T12:00:00",    "whatsapp": "919876543210",### Register Team
+
+    "email_sent": true,
+
+    "database_saved": true    "email": "john.doe@example.com"
+
+  }
+
+}  },```http
 
 ```
 
-### Get Queue Status
+  "viceCaptain": {POST /register/team
+
+## Testing
+
+    "name": "Jane Smith",```
+
+Run the test script:
+
+    "phone": "+919123456789",
+
+```bash
+
+python scripts/test_registration_simple.py    "whatsapp": "919123456789",Register a cricket team with 11-15 players, captain, vice-captain, and required documents.
+
+```
+
+    "email": "jane.smith@example.com"
+
+This will:
+
+- Create test data with 11 players  },**Request Body:**
+
+- Send registration request
+
+- Verify database storage  "players": [
+
+- Check email delivery
+
+    {```json
+
+## Project Structure
+
+      "name": "Player One",{
+
+```
+
+├── main.py                 # FastAPI application      "age": 25,  "churchName": "CSI St. Peter's Church",
+
+├── requirements.txt        # Python dependencies
+
+├── pyproject.toml         # Project configuration      "phone": "+919876543211",  "teamName": "Thunder Strikers",
+
+├── .env                   # Environment variables
+
+├── .env.example          # Environment template      "role": "Batsman",  "pastorLetter": "data:image/png;base64,...",
+
+├── scripts/
+
+│   ├── test_registration_simple.py  # Registration test      "aadharFile": "data:image/png;base64,...",  "captain": {
+
+│   └── setup_database.py           # Database setup
+
+├── venv/                  # Virtual environment      "subscriptionFile": "data:image/png;base64,..."    "name": "John Doe",
+
+└── .git/                  # Git repository
+
+```    }    "phone": "+919876543210",
+
+
+
+## Development  ],    "whatsapp": "919876543210",
+
+
+
+### Database Migrations  "paymentReceipt": "data:image/png;base64,..."    "email": "john.doe@example.com"
+
+
+
+If you need to modify the database schema:}  },
+
+
+
+1. Update the SQLAlchemy models in `main.py````  "viceCaptain": {
+
+2. The tables will be created automatically on startup
+
+3. For production, consider using Alembic for migrations    "name": "Jane Smith",
+
+
+
+### Email Configuration**Response (Success):**    "phone": "+919123456789",
+
+
+
+For Gmail SMTP:    "whatsapp": "919123456789",
+
+1. Enable 2-factor authentication
+
+2. Generate an App Password```json    "email": "jane.smith@example.com"
+
+3. Use the App Password in `SMTP_PASSWORD`
+
+{  },
+
+## Deployment
+
+  "success": true,  "players": [
+
+### Environment Variables
+
+  "message": "Team registration queued successfully",    {
+
+Set these in your production environment:
+
+  "status": "processing",      "name": "Player One",
+
+- `DATABASE_URL`: PostgreSQL connection string
+
+- `SMTP_*`: Email configuration  "data": {      "age": 25,
+
+- `PORT`: Server port (default: 8000)
+
+    "teamName": "Thunder Strikers",      "phone": "+919876543211",
+
+### Docker (Optional)
+
+    "churchName": "CSI St. Peter's Church",      "role": "Batsman",
+
+```dockerfile
+
+FROM python:3.11-slim    "captainName": "John Doe",      "aadharFile": "data:image/png;base64,...",
+
+
+
+WORKDIR /app    "playerCount": 11,      "subscriptionFile": "data:image/png;base64,..."
+
+COPY requirements.txt .
+
+RUN pip install -r requirements.txt    "queuedAt": "2026-01-15T10:30:45Z"    }
+
+
+
+COPY . .  }  ],
+
+EXPOSE 8000
+
+}  "paymentReceipt": "data:image/png;base64,..."
+
+CMD ["python", "main.py"]
+
+``````}
+
+
+
+## Support```
+
+
+
+For issues or questions, check the test scripts and ensure all environment variables are properly configured.### Get Queue Status
 
 **Response (Success):**
 
