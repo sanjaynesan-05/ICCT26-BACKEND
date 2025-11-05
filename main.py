@@ -423,8 +423,8 @@ async def startup_event():
         await init_db()
         print("✅ Database tables initialized")
     except Exception as e:
-        print(f"⚠️  Database initialization failed: {e}")
-        print("💡 Make sure PostgreSQL is running and DATABASE_URL is correct")
+        print(f"[WARNING] Database initialization failed: {e}")
+        print("   Make sure PostgreSQL is running and DATABASE_URL is correct")
         print("   Run: python scripts/setup_database.py for setup instructions")
 
 # ============================================================
@@ -518,7 +518,7 @@ async def register_team(registration: TeamRegistration, db: AsyncSession = Depen
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     print(f"\n{'='*60}")
-    print(f"🚀 ICCT26 Cricket Tournament Registration API")
+    print(f"[STARTING] ICCT26 Cricket Tournament Registration API")
     print(f"   Starting on port {port}...")
     print(f"{'='*60}\n")
     
