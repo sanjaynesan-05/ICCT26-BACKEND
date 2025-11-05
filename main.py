@@ -884,6 +884,16 @@ async def register_team(registration: TeamRegistration):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for Render monitoring (supports GET and HEAD)"""
+    return {
+        "status": "healthy",
+        "service": "ICCT26 Cricket Tournament Registration API",
+        "version": "2.0.0",
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    }
+
 @app.get("/queue/status")
 async def queue_status():
     """Get current queue status"""
