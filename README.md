@@ -1,974 +1,751 @@
-# 🏏 ICCT26 Cricket Tournament Backend API# 🏏 ICCT26 Cricket Tournament Backend API
+# 🏏 ICCT26 Cricket Tournament Backend API
 
+A professional, production-ready FastAPI backend for the **ICCT26 Cricket Tournament** registration system with PostgreSQL database integration, SMTP email notifications, and comprehensive API documentation.
 
-
-**FastAPI-based asynchronous team registration system** for the **ICCT26 Cricket Tournament** organized by **CSI St. Peter's Church, Coimbatore**.**FastAPI-based asynchronous team registration system** for the **ICCT26 Cricket Tournament** organized by **CSI St. Peter's Church, Coimbatore**.
-
-
-
-## 🎯 Event Details## 🎯 Event Details
-
-- **Event:** ICCT26 Cricket Tournament 2026
-
-- **Event:** ICCT26 Cricket Tournament 2026- **Format:** Red Tennis Ball Cricket
-
-- **Format:** Red Tennis Ball Cricket- **Dates:** January 24-26, 2026
-
-- **Dates:** January 24-26, 2026- **Location:** CSI St. Peter's Church Cricket Ground, Coimbatore, Tamil Nadu
-
-- **Location:** CSI St. Peter's Church Cricket Ground, Coimbatore, Tamil Nadu- **Registration Fee:** ₹2,000 per team
-
-- **Registration Fee:** ₹2,000 per team- **Teams per Church:** 1-2 teams
-
-- **Teams per Church:** 1-2 teams- **Players per Team:** 11-15 players
-
-- **Players per Team:** 11-15 players- **Player Age Range:** 15-60 years
-
-- **Player Age Range:** 15-60 years
+**Organized by**: CSI St. Peter's Church, Coimbatore
 
 ---
 
+## 📋 Table of Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Tech Stack](#tech-stack)
+- [Project Structure](#project-structure)
+- [Quick Start](#quick-start)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [Database Schema](#database-schema)
+- [API Endpoints](#api-endpoints)
+- [Testing](#testing)
+- [Troubleshooting](#troubleshooting)
+- [Production Deployment](#production-deployment)
+
 ---
 
-## ⚡ Quick Start
+## 🎯 Overview
 
-## ⚡ Quick Start
+The ICCT26 Backend provides a complete REST API for cricket tournament team registration. Teams can register with 11-15 players, and the system automatically:
+- Validates all input data using Pydantic models
+- Stores registrations in PostgreSQL database
+- Sends confirmation emails to team captains
+- Generates unique team IDs for tracking
 
-### 1. Installation
+### Event Details
+- **Event**: ICCT26 Cricket Tournament 2026
+- **Format**: Red Tennis Ball Cricket  
+- **Dates**: January 24-26, 2026
+- **Venue**: CSI St. Peter's Church, Coimbatore
 
-### 1. Installation
+---
+
+## ✨ Features
+
+### Core Functionality
+- ✅ **Complete Team Registration** - Register teams with 11-15 players
+- ✅ **Multi-Role Player System** - Support for Batsman, Bowler, All-Rounder, Wicket Keeper
+- ✅ **Document Management** - Base64 encoded PDF file uploads (Aadhar, Subscription, Pastor Letter, Payment Receipt)
+- ✅ **Email Notifications** - Automatic confirmation emails to team captains
+- ✅ **Unique Team IDs** - Auto-generated identifiers for tracking
+
+### Technical Features
+- ✅ **PostgreSQL Integration** - Persistent, relational data storage
+- ✅ **SQLAlchemy ORM** - Object-relational mapping with async support
+- ✅ **Pydantic Validation** - Strict input/output validation
+- ✅ **CORS Support** - Frontend integration ready
+- ✅ **API Documentation** - Auto-generated Swagger UI and ReDoc
+- ✅ **Error Handling** - Comprehensive exception handling
+- ✅ **Async Operations** - Non-blocking database operations with asyncpg
+- ✅ **SMTP Email** - Gmail and custom SMTP provider support
+
+---
+
+## 🛠️ Tech Stack
+
+| Component | Technology | Version |
+|-----------|-----------|---------|
+| **Framework** | FastAPI | 0.104+ |
+| **Server** | Uvicorn | 0.24+ |
+| **Database** | PostgreSQL | 17+ |
+| **ORM** | SQLAlchemy | 2.0+ |
+| **Async Driver** | asyncpg | 0.29+ |
+| **Validation** | Pydantic | 2.5+ |
+| **Python** | Python | 3.11+ |
+
+---
+
+## 📂 Project Structure
+
+```
+ICCT26-BACKEND/
+│
+├── 📄 Core Application Files
+│   ├── main.py                    # FastAPI application (production)
+│   ├── simple_main.py             # Simple FastAPI app (testing)
+│   ├── database.py                # SQLAlchemy configuration
+│   ├── models.py                  # SQLAlchemy ORM models
+│   └── init_db.py                 # Database initialization
+│
+├── 📁 scripts/                    # Utility scripts
+│   ├── test_registration_simple.py     # Full API test
+│   ├── test_simple_api.py              # Simple API test
+│   ├── setup_database.py               # Database setup
+│   ├── setup_postgres.bat              # Windows PostgreSQL setup
+│   └── setup_postgres.sh               # Linux/macOS setup
+│
+├── 📁 docs/                       # Documentation
+│   └── POSTGRESQL_SETUP.md        # PostgreSQL installation guide
+│
+├── 🔧 Configuration Files
+│   ├── requirements.txt           # Python dependencies
+│   ├── pyproject.toml             # Project metadata
+│   ├── .env                       # Environment variables (git ignored)
+│   └── .env.example               # Environment template
+│
+├── 📖 Documentation
+│   ├── README.md                  # This file
+│   └── SIMPLE_API_README.md       # Simple API documentation
+│
+└── 📦 Virtual Environment
+    ├── venv/                      # Python virtual environment
+    └── .git/                      # Git repository
+```
+
+---
+
+## 🚀 Quick Start
+
+### Prerequisites
+- **Python**: 3.11 or higher
+- **PostgreSQL**: Version 17 or higher
+- **pip**: Python package manager
+- **Git**: For version control
+
+### 1-Minute Setup
 
 ```bash
+# Clone repository
+git clone <repo-url> && cd ICCT26-BACKEND
 
-```bash# Clone repository
-
-git clone <your-repo-url>git clone <your-repo-url>
-
-cd icct26-backendcd icct26-backend
-
+# Create & activate virtual environment
 python -m venv venv
+.\venv\Scripts\activate  # Windows
+# source venv/bin/activate  # Linux/macOS
 
-venv\Scripts\activate# Create virtual environment
-
-pip install -r requirements.txtpython -m venv venv
-
-```
-
-# Activate virtual environment
-
-### 2. Configuration# Windows:
-
-venv\Scripts\activate
-
-```bash# macOS/Linux:
-
-cp .env.example .envsource venv/bin/activate
-
-# Edit .env with Google credentials and SMTP settings
-
-```# Install dependencies
-
+# Install dependencies
 pip install -r requirements.txt
 
-### 3. Setup Google Credentials```
+# Initialize database
+python init_db.py
 
+# Start server
+uvicorn main:app --reload
+```
 
-
-See [Google Credentials Setup Guide](./docs/GOOGLE_CREDENTIALS_SETUP.md) for detailed instructions.### 2. Configuration
-
-
-
-### 4. Run Server```bash
-
-# Copy environment template
-
-```bashcp .env.example .env
-
-uvicorn main:app --reload --host 127.0.0.1 --port 8000
-
-```# Edit .env with your credentials:
-
-# - Google Cloud service account credentials
-
-### 5. Access API# - SMTP credentials for email
-
-# - Google Sheets spreadsheet ID
-
-- **API Home:** <http://localhost:8000>```
-
-- **Swagger UI:** <http://localhost:8000/docs>
-
-- **ReDoc:** <http://localhost:8000/redoc>### 3. Setup Google Credentials
-
-- **Queue Status:** <http://localhost:8000/queue/status>
-
-See [Google Credentials Setup Guide](./docs/GOOGLE_CREDENTIALS_SETUP.md) for detailed instructions.
+Open browser: **http://localhost:8000/docs**
 
 ---
 
-### 4. Run Server
+## 📦 Installation
 
-## 🚀 API Endpoints
+### Step 1: Clone Repository
 
 ```bash
-
-### Register Team# Using Uvicorn (recommended)
-
-uvicorn main:app --reload --host 127.0.0.1 --port 8000
-
-```http
-
-POST /register/team# Production deployment
-
-```uvicorn main:app --host 0.0.0.0 --port 8000
-
+git clone <repository-url>
+cd ICCT26-BACKEND
 ```
 
-Register a cricket team with 11-15 players, captain, vice-captain, and required documents.
+### Step 2: Create Virtual Environment
 
-### 5. Access API
+```bash
+# Windows
+python -m venv venv
+.\venv\Scripts\activate
 
-**Request Body:**
-
-- **API Home:** <http://localhost:8000>
-
-```json- **Swagger UI:** <http://localhost:8000/docs>
-
-{- **ReDoc:** <http://localhost:8000/redoc>
-
-  "churchName": "CSI St. Peter's Church",- **Queue Status:** <http://localhost:8000/queue/status>
-
-  "teamName": "Thunder Strikers",
-
-  "pastorLetter": "data:image/png;base64,...",---
-
-  "captain": {
-
-    "name": "John Doe",## 🚀 API Endpoints
-
-    "phone": "+919876543210",
-
-    "whatsapp": "919876543210",### Register Team
-
-    "email": "john.doe@example.com"
-
-  },```http
-
-  "viceCaptain": {POST /register/team
-
-    "name": "Jane Smith",```
-
-    "phone": "+919123456789",
-
-    "whatsapp": "919123456789",Register a cricket team with 11-15 players, captain, vice-captain, and required documents.
-
-    "email": "jane.smith@example.com"
-
-  },**Request Body:**
-
-  "players": [
-
-    {```json
-
-      "name": "Player One",{
-
-      "age": 25,  "churchName": "CSI St. Peter's Church",
-
-      "phone": "+919876543211",  "teamName": "Thunder Strikers",
-
-      "role": "Batsman",  "pastorLetter": "data:image/png;base64,...",
-
-      "aadharFile": "data:image/png;base64,...",  "captain": {
-
-      "subscriptionFile": "data:image/png;base64,..."    "name": "John Doe",
-
-    }    "phone": "+919876543210",
-
-  ],    "whatsapp": "919876543210",
-
-  "paymentReceipt": "data:image/png;base64,..."    "email": "john.doe@example.com"
-
-}  },
-
-```  "viceCaptain": {
-
-    "name": "Jane Smith",
-
-**Response (Success):**    "phone": "+919123456789",
-
-    "whatsapp": "919123456789",
-
-```json    "email": "jane.smith@example.com"
-
-{  },
-
-  "success": true,  "players": [
-
-  "message": "Team registration queued successfully",    {
-
-  "status": "processing",      "name": "Player One",
-
-  "data": {      "age": 25,
-
-    "teamName": "Thunder Strikers",      "phone": "+919876543211",
-
-    "churchName": "CSI St. Peter's Church",      "role": "Batsman",
-
-    "captainName": "John Doe",      "aadharFile": "data:image/png;base64,...",
-
-    "playerCount": 11,      "subscriptionFile": "data:image/png;base64,..."
-
-    "queuedAt": "2026-01-15T10:30:45Z"    }
-
-  }  ],
-
-}  "paymentReceipt": "data:image/png;base64,..."
-
-```}
-
+# Linux/macOS
+python3 -m venv venv
+source venv/bin/activate
 ```
 
-### Get Queue Status
+### Step 3: Install Dependencies
 
-**Response (Success):**
-
-```http
-
-GET /queue/status```json
-
-```{
-
-  "success": true,
-
-Check current registration queue processing status.  "message": "Team registration queued successfully",
-
-  "status": "processing",
-
-**Response:**  "data": {
-
-    "teamName": "Thunder Strikers",
-
-```json    "churchName": "CSI St. Peter's Church",
-
-{    "captainName": "John Doe",
-
-  "queue_size": 3,    "playerCount": 11,
-
-  "worker_active": true,    "queuedAt": "2026-01-15T10:30:45Z"
-
-  "timestamp": "2026-01-15T10:40:15Z"  }
-
-}}
-
-``````
-
-
-
----### Get Queue Status
-
-
-
-## ✨ Key Features```http
-
-GET /queue/status
-
-| Feature | Description |```
-
-|---------|-------------|
-
-| 🚀 **Async Processing** | Queue-based system handles high volume |Check current registration queue processing status.
-
-| ✅ **Team Validation** | 11-15 players, age 15-60, auto-validation |
-
-| 📊 **Google Sheets Sync** | Real-time data synchronization |**Response:**
-
-| 📄 **File Support** | Base64 encoded documents and images |
-
-| 📧 **Email Notifications** | Automated HTML confirmation emails |```json
-
-| 🔄 **Duplicate Detection** | Prevents duplicate team registrations |{
-
-| 🏗️ **Nested Structure** | Captain/Vice-Captain as objects |  "queue_size": 3,
-
-| 🔒 **Thread-Safe Queue** | No data loss during concurrent requests |  "worker_active": true,
-
-| 🌐 **CORS Enabled** | Cross-origin requests supported |  "timestamp": "2026-01-15T10:40:15Z"
-
-| 📚 **Auto Documentation** | Swagger UI and ReDoc available |}
-
+```bash
+pip install -r requirements.txt
 ```
 
----
+**Dependencies include:**
+- fastapi - Web framework
+- uvicorn - ASGI server
+- sqlalchemy - ORM
+- psycopg2-binary - PostgreSQL driver
+- asyncpg - Async PostgreSQL driver
+- pydantic - Data validation
+- python-dotenv - Environment variables
+- email-validator - Email validation
 
----
+### Step 4: PostgreSQL Setup
 
-## 📊 Data Models
+**Complete Guide**: See [`POSTGRESQL_SETUP.md`](./POSTGRESQL_SETUP.md)
 
-## ✨ Key Features
+Quick setup:
+```bash
+# Windows
+scripts\setup_postgres.bat
 
-### PlayerDetails
-
-| Feature | Description |
-
-```python|---------|-------------|
-
-- name: str (required, 2-100 chars)| 🚀 **Asynchronous Processing** | Queue-based registration handles high volume without blocking |
-
-- age: int (required, 15-60)| ✅ **Team Validation** | Enforces 11-15 players with age restrictions (15-60 years) |
-
-- phone: str (required, 10 digits)| 📊 **Google Sheets Sync** | Auto-populate Teams, Players, and Files sheets in real-time |
-
-- role: str (Batsman, Bowler, All-rounder, Wicket-keeper)| 📄 **File Support** | Base64 encoded documents (pastor letters, receipts, Aadhar, subscriptions) |
-
-- aadharFile: str (required, base64)| 📧 **Email Notifications** | Automated HTML confirmation emails after registration |
-
-- subscriptionFile: str (required, base64)| 🔄 **Duplicate Detection** | Prevents team name + payment receipt duplicates |
-
-```| 🏗️ **Nested Structure** | Captain/Vice-Captain as objects, players as array |
-
-| 🔒 **Thread-Safe Queue** | No data loss during concurrent registrations |
-
-### CaptainInfo / ViceCaptainInfo| 🌐 **CORS Enabled** | Cross-origin requests fully supported |
-
-| 📚 **Auto Docs** | Swagger UI and ReDoc for interactive testing |
-
-```python
-
-- name: str (required, 2-100 chars)---
-
-- phone: str (required, 10 digits)
-
-- whatsapp: str (required, 10 digits)## 📊 Data Models
-
-- email: str (required, valid format)
-
-```### PlayerDetails
-
-
-
-### TeamRegistration```python
-
-- name: str (required, 2-100 characters)
-
-```python- age: int (required, 15-60)
-
-- churchName: str (required, 2-200 chars)- phone: str (required, 10 digits)
-
-- teamName: str (required, 2-100 chars, unique)- role: str (required, one of: Batsman, Bowler, All-rounder, Wicket-keeper)
-
-- pastorLetter: str (required, base64)- aadharFile: str (required, base64 image)
-
-- captain: CaptainInfo (required)- subscriptionFile: str (required, base64 image)
-
-- viceCaptain: ViceCaptainInfo (required)```
-
-- players: List[PlayerDetails] (required, 11-15)
-
-- paymentReceipt: str (required, base64)### CaptainInfo / ViceCaptainInfo
-
+# Linux/macOS
+chmod +x scripts/setup_postgres.sh
+./scripts/setup_postgres.sh
 ```
 
-```python
+### Step 5: Environment Configuration
 
----- name: str (required, 2-100 characters)
+Copy `.env.example` to `.env` and update:
 
-- phone: str (required, 10 digits)
-
-## 📚 Documentation- whatsapp: str (required, 10 digits)
-
-- email: str (required, valid email format)
-
-All documentation is organized in the `docs/` folder:```
-
-
-
-| Document | Purpose |### TeamRegistration
-
-|----------|---------|
-
-| [docs/README.md](./docs/README.md) | Main overview |```python
-
-| [docs/MODELS_DOCUMENTATION.md](./docs/MODELS_DOCUMENTATION.md) | Complete API reference |- churchName: str (required, 2-200 characters)
-
-| [docs/GOOGLE_CREDENTIALS_SETUP.md](./docs/GOOGLE_CREDENTIALS_SETUP.md) | Google Cloud setup |- teamName: str (required, 2-100 characters, unique per church)
-
-| [docs/REGISTRATION_REFACTOR.md](./docs/REGISTRATION_REFACTOR.md) | React frontend guide |- pastorLetter: str (required, base64 image)
-
-- captain: CaptainInfo (required)
-
----- viceCaptain: ViceCaptainInfo (required)
-
-- players: List[PlayerDetails] (required, 11-15 items)
-
-## 📁 Project Structure- paymentReceipt: str (required, base64 image)
-
-```
-
-```
-
-icct26-backend/---
-
-├── docs/                          # 📚 Documentation
-
-│   ├── README.md## 📚 Documentation
-
-│   ├── MODELS_DOCUMENTATION.md
-
-│   ├── GOOGLE_CREDENTIALS_SETUP.mdAll documentation is organized in the `docs/` folder:
-
-│   ├── REGISTRATION_REFACTOR.md
-
-│   └── .markdownlint.json| Document | Purpose |
-
-├── main.py                        # 🚀 FastAPI app|----------|---------|
-
-├── requirements.txt               # 📦 Dependencies| **[docs/README.md](./docs/README.md)** | Main project overview (this file) |
-
-├── pyproject.toml                 # 🐍 Config| **[docs/MODELS_DOCUMENTATION.md](./docs/MODELS_DOCUMENTATION.md)** | Complete API reference with request/response examples |
-
-├── test_email.py                  # ✉️ Email tester| **[docs/GOOGLE_CREDENTIALS_SETUP.md](./docs/GOOGLE_CREDENTIALS_SETUP.md)** | Step-by-step Google Cloud setup guide |
-
-├── .env                           # ⚙️ Variables| **[docs/REGISTRATION_REFACTOR.md](./docs/REGISTRATION_REFACTOR.md)** | Frontend React integration guide |
-
-├── .env.example                   # 📋 Template
-
-├── .gitignore                     # 🔒 Git rules---
-
-└── icct26-3d6153f8ac99.json       # 🔑 Credentials (not committed)
-
-```## � Project Structure
-
-
-
----```
-
-icct26-backend/
-
-## ⚙️ Environment Configuration├── docs/                          # 📚 Documentation folder
-
-│   ├── README.md                  # Main project documentation
-
-### Required Variables│   ├── MODELS_DOCUMENTATION.md    # Complete API reference
-
-│   ├── GOOGLE_CREDENTIALS_SETUP.md # Google Cloud setup
-
-```bash│   ├── REGISTRATION_REFACTOR.md   # Frontend integration guide
-
-# Google Cloud Service Account (from service account JSON)│   └── .markdownlint.json         # Markdown linting rules
-
-GOOGLE_CREDENTIALS_TYPE=service_account│
-
-GOOGLE_PROJECT_ID=your-project-id├── main.py                        # 🚀 FastAPI application (core)
-
-GOOGLE_PRIVATE_KEY_ID=your-key-id├── requirements.txt               # 📦 Python dependencies
-
-GOOGLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"├── pyproject.toml                 # 🐍 Python project config
-
-GOOGLE_CLIENT_EMAIL=icct26@project.iam.gserviceaccount.com├── test_email.py                  # ✉️ Email testing utility
-
-GOOGLE_CLIENT_ID=your-client-id│
-
-GOOGLE_AUTH_URI=https://accounts.google.com/o/oauth2/auth├── .env                          # ⚙️ Environment variables (not committed)
-
-GOOGLE_TOKEN_URI=https://oauth2.googleapis.com/token├── .env.example                  # 📋 Environment template
-
-GOOGLE_AUTH_PROVIDER_X509_CERT_URL=https://www.googleapis.com/oauth2/v1/certs├── .gitignore                    # 🔒 Git ignore rules
-
-GOOGLE_CLIENT_X509_CERT_URL=https://www.googleapis.com/robot/v1/metadata/x509/...├── icct26-3d6153f8ac99.json      # 🔑 Google credentials (not committed)
-
-GOOGLE_UNIVERSE_DOMAIN=googleapis.com│
-
-└── .python-version               # 🐍 Python version specification
-
-# Google Sheets```
-
-SPREADSHEET_ID=your-spreadsheet-id-here
-
----
-
-# SMTP Email
-
-SMTP_SERVER=smtp.gmail.com## ⚙️ Environment Configuration
-
-SMTP_PORT=587
-
-SMTP_USERNAME=your-email@gmail.com### Required Environment Variables
-
-SMTP_PASSWORD=your-app-password
-
-SMTP_FROM_EMAIL=your-email@gmail.com```bash
-
-SMTP_FROM_NAME=ICCT26 Registration Team# Google Cloud Service Account
-
-GOOGLE_CREDENTIALS_TYPE=service_account
-
-# ServerGOOGLE_PROJECT_ID=your-project-id
-
-PORT=8000GOOGLE_PRIVATE_KEY_ID=your-key-id
-
-ENVIRONMENT=developmentGOOGLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
-
-```GOOGLE_CLIENT_EMAIL=icct26@project.iam.gserviceaccount.com
-
-GOOGLE_CLIENT_ID=your-client-id
-
-### Setup StepsGOOGLE_AUTH_URI=https://accounts.google.com/o/oauth2/auth
-
-GOOGLE_TOKEN_URI=https://oauth2.googleapis.com/token
-
-1. **Create `.env` from template:**GOOGLE_AUTH_PROVIDER_X509_CERT_URL=https://www.googleapis.com/oauth2/v1/certs
-
-GOOGLE_CLIENT_X509_CERT_URL=https://www.googleapis.com/robot/v1/metadata/x509/...
-
-```bashGOOGLE_UNIVERSE_DOMAIN=googleapis.com
-
+```bash
 cp .env.example .env
+```
 
-```# Google Sheets Configuration
+Edit `.env`:
+```env
+# Database
+DATABASE_URL=postgresql+asyncpg://postgres:icctpg@localhost/icct26_db
 
-SPREADSHEET_ID=your-spreadsheet-id-here
-
-2. **Add Google credentials** (see [Google Setup Guide](./docs/GOOGLE_CREDENTIALS_SETUP.md))
-
-3. **Create Google Sheet** and share with service account# SMTP Email Configuration
-
-4. **Configure SMTP** (use Gmail app passwords)SMTP_SERVER=smtp.gmail.com
-
+# SMTP (Gmail example)
+SMTP_SERVER=smtp.gmail.com
 SMTP_PORT=587
-
----SMTP_USERNAME=your-email@gmail.com
-
+SMTP_USERNAME=your-email@gmail.com
 SMTP_PASSWORD=your-app-password
+SMTP_FROM_EMAIL=your-email@gmail.com
+SMTP_FROM_NAME=ICCT26 TEAM
 
-## 🧪 TestingSMTP_FROM_EMAIL=your-email@gmail.com
-
-SMTP_FROM_NAME=ICCT26 Registration Team
-
-### Test Email Configuration
-
-# Server Configuration
-
-```bashPORT=8000
-
-python test_email.pyENVIRONMENT=development
-
-``````
-
-
-
-### API Testing with cURL### Setup Steps
-
-
-
-```bash1. **Create `.env` file from template:**
-
-curl http://localhost:8000   ```bash
-
-curl http://localhost:8000/queue/status   cp .env.example .env
-
-```   ```
-
-
-
-### Interactive Testing2. **Add Google credentials** (see [Google Setup Guide](./docs/GOOGLE_CREDENTIALS_SETUP.md))
-
-
-
-- **Swagger UI:** <http://localhost:8000/docs>3. **Create Google Sheet** and share with service account email
-
-- **ReDoc:** <http://localhost:8000/redoc>
-
-4. **Configure SMTP** (Gmail recommended - use app passwords)
-
----
-
----
-
-## 🚀 Deployment
-
-## 🧪 Testing
-
-### Local Development
-
-### Test Email Configuration
-
-```bash```bash
-
-pip install -r requirements.txtpython test_email.py
-
-uvicorn main:app --reload --host 127.0.0.1 --port 8000```
-
+# Server
+PORT=8000
+ENVIRONMENT=development
 ```
 
-### API Testing with cURL
-
-### Production with Gunicorn```bash
-
-# Check API health
-
-```bashcurl http://localhost:8000
-
-pip install gunicorn
-
-gunicorn -w 4 -k uvicorn.workers.UvicornWorker main:app --bind 0.0.0.0:8000# Get queue status
-
-```curl http://localhost:8000/queue/status
-
-
-
-### Docker Deployment# Register a team (example)
-
-curl -X POST http://localhost:8000/register/team \
-
-```dockerfile  -H "Content-Type: application/json" \
-
-FROM python:3.11-slim  -d @team-registration.json
-
-WORKDIR /app```
-
-COPY requirements.txt .
-
-RUN pip install --no-cache-dir -r requirements.txt### Interactive Testing
-
-COPY . .- **Swagger UI:** http://localhost:8000/docs
-
-EXPOSE 8000- **ReDoc:** http://localhost:8000/redoc
-
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
-
-```---
-
-
-
-Build and run:## 🚀 Deployment
-
-
-
-```bash### Local Development
-
-docker build -t icct26-backend .```bash
-
-docker run -p 8000:8000 --env-file .env icct26-backend# Install dependencies
-
-```pip install -r requirements.txt
-
-
-
-### Production Checklist# Run with auto-reload
-
-uvicorn main:app --reload --host 127.0.0.1 --port 8000
-
-- [ ] Set `ENVIRONMENT=production` in `.env````
-
-- [ ] Use production SMTP credentials
-
-- [ ] Configure Google Sheets access### Production Deployment
-
-- [ ] Set up HTTPS with reverse proxy (nginx/Caddy)
-
-- [ ] Enable firewall restrictions#### Option 1: Uvicorn with Gunicorn
-
-- [ ] Configure monitoring and logging```bash
-
-- [ ] Set up backup strategypip install gunicorn
-
-gunicorn -w 4 -k uvicorn.workers.UvicornWorker main:app --bind 0.0.0.0:8000
-
----```
-
-
-
-## 🏗️ Architecture#### Option 2: Docker Deployment
-
-```dockerfile
-
-```FROM python:3.11-slim
-
-Frontend (React)
-
-       ↓WORKDIR /app
-
-FastAPI Server → Validation + CORS
-
-       ↓COPY requirements.txt .
-
-Queue System → Background WorkerRUN pip install --no-cache-dir -r requirements.txt
-
-       ↓
-
-Google Sheets + Email ServiceCOPY . .
-
-```
-
-EXPOSE 8000
-
----
-
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
-
-## 📦 Dependencies```
-
-
-
-- **FastAPI** 0.104+ - Modern async web frameworkBuild and run:
-
-- **Uvicorn** - ASGI server```bash
-
-- **Pydantic** 2.5.0+ - Data validationdocker build -t icct26-backend .
-
-- **gspread** - Google Sheets APIdocker run -p 8000:8000 --env-file .env icct26-backend
-
-- **google-auth** - Authentication```
-
-- **aiofiles** - Async file operations
-
-- **python-dotenv** - Environment management#### Configuration Checklist
-
-- [ ] Set `ENVIRONMENT=production` in `.env`
-
-See `requirements.txt` for complete list.- [ ] Use production SMTP credentials
-
-- [ ] Configure Google Sheets with proper access
-
----- [ ] Set up HTTPS with reverse proxy (nginx/Caddy)
-
-- [ ] Enable firewall restrictions
-
-## 🔒 Security Best Practices- [ ] Set up monitoring and logging
-
-- [ ] Configure backup strategy
-
-✅ **Environment Variables** - Credentials in `.env` (not committed)
-
-✅ **Git Ignore** - Sensitive files excluded:---
-
-   - `icct26-3d6153f8ac99.json` - Google credentials
-
-   - `.env` - Environment variables## 🏗️ Architecture
-
-   - `__pycache__/` - Python cache
-
-```
-
-✅ **HTTPS** - Use HTTPS in production┌─────────────────────────────────────────────────────────┐
-
-✅ **CORS** - Configured for frontend│                    Frontend (React)                      │
-
-✅ **Input Validation** - Pydantic models│           POST /register/team with Base64 files          │
-
-✅ **File Validation** - Base64 size limits└────────────────────────┬────────────────────────────────┘
-
-✅ **Duplicate Prevention** - Team + receipt validation                         │
-
-┌────────────────────────▼────────────────────────────────┐
-
----│                   FastAPI Server                        │
-
-│  ├─ Validation (Pydantic models)                        │
-
-## 📧 Email Configuration│  ├─ CORS Handling                                       │
-
-│  └─ Instant JSON Response                              │
-
-### Gmail Setup (Recommended)└────────────────────────┬────────────────────────────────┘
-
-                         │
-
-1. Go to [Google Account Security](https://myaccount.google.com/security)                    Queue System
-
-2. Enable 2-Step Verification                         │
-
-3. Generate [App Password](https://myaccount.google.com/apppasswords)┌────────────────────────▼────────────────────────────────┐
-
-4. Add to `.env`:│              Background Worker Thread                   │
-
-│  ├─ Extract & Validate Data                            │
-
-```bash│  ├─ Decode Base64 Files                                │
-
-SMTP_USERNAME=your-email@gmail.com│  ├─ Check Duplicates                                   │
-
-SMTP_PASSWORD=your-app-password│  └─ Google Sheets Integration                          │
-
-```└────────────────────────┬────────────────────────────────┘
-
-                         │
-
-### Test Email Setup        ┌────────────────┴────────────────┐
-
-        │                                  │
-
-```bash   ┌────▼────────────┐         ┌──────────▼───────┐
-
-python test_email.py   │ Google Sheets   │         │ Email Service    │
-
-```   │ - Teams sheet   │         │ - Confirmations  │
-
-   │ - Players sheet │         │ - Notifications  │
-
----   │ - Files sheet   │         │ - HTML templates │
-
-   └─────────────────┘         └──────────────────┘
-
-## 🤝 Contributing```
-
-
-
-1. Fork the repository---
-
-2. Create a feature branch
-
-3. Commit your changes## � Dependencies
-
-4. Push to the branch
-
-5. Open a Pull Request- **FastAPI** 0.104+ - Modern async web framework
-
-- **Uvicorn** - ASGI server
-
----- **Pydantic** 2.5.0+ - Data validation
-
-- **gspread** - Google Sheets API client
-
-## 📞 Support & Troubleshooting- **google-auth** - Google authentication
-
-- **aiofiles** - Async file operations
-
-### Common Issues- **python-dotenv** - Environment variable management
-
-
-
-**"ModuleNotFoundError: No module named 'fastapi'"**See `requirements.txt` for complete list with versions.
-
-
-
-```bash---
-
-pip install -r requirements.txt
-
-```## 🔒 Security Best Practices
-
-
-
-**"Google Sheets API error"**✅ **Environment Variables** - Credentials stored in `.env`, never in code
-
-- Check `SPREADSHEET_ID` in `.env`✅ **Git Ignore** - Sensitive files excluded via `.gitignore`:
-
-- Verify service account has Editor access   - `icct26-3d6153f8ac99.json` - Google credentials
-
-- See [Google Setup Guide](./docs/GOOGLE_CREDENTIALS_SETUP.md)   - `.env` - Environment variables
-
-   - `__pycache__/` - Python cache
-
-**"SMTP authentication failed"**   - `.python-version` - Local version spec
-
-- Use app password, not account password
-
-- Check credentials in `.env`✅ **HTTPS** - Use HTTPS in production with reverse proxy
-
-- Run `python test_email.py`✅ **CORS** - Configured for frontend origin
-
-✅ **Input Validation** - Pydantic models validate all inputs
-
-**"Port 8000 already in use"**✅ **File Size Limits** - Base64 files validated before processing
-
-✅ **Duplicate Prevention** - Team + payment receipt validation
+### Step 6: Initialize Database
 
 ```bash
-
-uvicorn main:app --port 8001---
-
-```
-
-## 📧 Email Configuration
-
-### Documentation
-
-### Gmail Setup (Recommended)
-
-- 📖 [Full API Reference](./docs/MODELS_DOCUMENTATION.md)
-
-- 🔧 [Google Cloud Setup](./docs/GOOGLE_CREDENTIALS_SETUP.md)1. Go to [Google Account Security](https://myaccount.google.com/security)
-
-- ⚛️ [React Frontend Guide](./docs/REGISTRATION_REFACTOR.md)2. Enable 2-Step Verification
-
-- 🌐 [Interactive API Docs](http://localhost:8000/docs)3. Generate [App Password](https://myaccount.google.com/apppasswords)
-
-4. Use app password in `.env`:
-
----   ```bash
-
-   SMTP_USERNAME=your-email@gmail.com
-
-**Made with ❤️ for ICCT26 Cricket Tournament | 2026**   SMTP_PASSWORD=your-app-password
-
-   ```
-
-### Test Email Setup
-```bash
-python test_email.py
+python init_db.py
 ```
 
 Expected output:
 ```
-Email configuration test
-SMTP Server: smtp.gmail.com:587
-From: your-email@gmail.com
-Status: ✅ Connection successful
+⏳ Creating database tables...
+✅ All tables created successfully!
 ```
+
+### Step 7: Start Server
+
+```bash
+# Production API
+uvicorn main:app --reload --port 8000
+
+# Simple API (for testing)
+uvicorn simple_main:app --reload --port 8001
+```
+
+---
+
+## ⚙️ Configuration
+
+### Environment Variables
+
+| Variable | Type | Default | Description |
+|----------|------|---------|-------------|
+| `DATABASE_URL` | string | - | PostgreSQL connection URL |
+| `SMTP_SERVER` | string | `smtp.gmail.com` | SMTP server address |
+| `SMTP_PORT` | int | `587` | SMTP port |
+| `SMTP_USERNAME` | string | - | SMTP username/email |
+| `SMTP_PASSWORD` | string | - | SMTP password/app-password |
+| `SMTP_FROM_EMAIL` | string | - | Sender email address |
+| `SMTP_FROM_NAME` | string | `ICCT26 TEAM` | Sender display name |
+| `PORT` | int | `8000` | Server port |
+| `ENVIRONMENT` | string | `development` | Environment (development/production) |
+
+### Database Configuration
+
+**File**: `database.py`
+
+```python
+DATABASE_URL = "postgresql+asyncpg://postgres:icctpg@localhost:5432/icct26_db"
+engine = create_async_engine(DATABASE_URL)
+async_session = sessionmaker(engine, class_=AsyncSession)
+```
+
+### SMTP Configuration
+
+**For Gmail:**
+1. Enable 2-factor authentication
+2. Generate App Password: https://myaccount.google.com/apppasswords
+3. Use App Password in `.env` (not your main password)
+
+**Example:**
+```env
+SMTP_SERVER=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USERNAME=sanjaynesan007@gmail.com
+SMTP_PASSWORD=capblszgvdjcrwyd
+```
+
+---
+
+## 📊 Database Schema
+
+### team_registrations
+Main registration table
+
+```sql
+CREATE TABLE team_registrations (
+    id SERIAL PRIMARY KEY,
+    team_id VARCHAR(50) UNIQUE NOT NULL,
+    church_name VARCHAR(200),
+    team_name VARCHAR(100),
+    pastor_letter TEXT,
+    payment_receipt TEXT,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+```
+
+### captains
+Team captain information
+
+```sql
+CREATE TABLE captains (
+    id SERIAL PRIMARY KEY,
+    registration_id INTEGER REFERENCES team_registrations(id),
+    name VARCHAR(100),
+    phone VARCHAR(15),
+    whatsapp VARCHAR(10),
+    email VARCHAR(255)
+);
+```
+
+### vice_captains
+Vice-captain information
+
+```sql
+CREATE TABLE vice_captains (
+    id SERIAL PRIMARY KEY,
+    registration_id INTEGER REFERENCES team_registrations(id),
+    name VARCHAR(100),
+    phone VARCHAR(15),
+    whatsapp VARCHAR(10),
+    email VARCHAR(255)
+);
+```
+
+### players
+Player roster (11-15 per team)
+
+```sql
+CREATE TABLE players (
+    id SERIAL PRIMARY KEY,
+    registration_id INTEGER REFERENCES team_registrations(id),
+    name VARCHAR(100),
+    age INTEGER,
+    phone VARCHAR(15),
+    role VARCHAR(20),
+    aadhar_file TEXT,
+    subscription_file TEXT
+);
+```
+
+### teams (Simple API Only)
+Simple teams table for basic testing
+
+```sql
+CREATE TABLE teams (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100),
+    captain VARCHAR(100),
+    registered_on TIMESTAMP DEFAULT NOW()
+);
+```
+
+---
+
+## 🔌 API Endpoints
+
+### Main API (Production)
+
+#### POST `/register/team`
+Register a cricket team with player details
+
+**Content-Type**: `application/json`
+
+**Request Body:**
+```json
+{
+  "churchName": "CSI St. Peter's Church",
+  "teamName": "Warriors",
+  "pastorLetter": "data:application/pdf;base64,JVBERi0xLjQ...",
+  "captain": {
+    "name": "John Doe",
+    "phone": "+919876543210",
+    "whatsapp": "9876543210",
+    "email": "captain@example.com"
+  },
+  "viceCaptain": {
+    "name": "Jane Smith",
+    "phone": "+919876543211",
+    "whatsapp": "9876543211",
+    "email": "vice@example.com"
+  },
+  "players": [
+    {
+      "name": "Player One",
+      "age": 25,
+      "phone": "+919876543212",
+      "role": "Batsman",
+      "aadharFile": "data:application/pdf;base64,JVBERi0xLjQ...",
+      "subscriptionFile": "data:application/pdf;base64,JVBERi0xLjQ..."
+    },
+    {
+      "name": "Player Two",
+      "age": 26,
+      "phone": "+919876543213",
+      "role": "Bowler",
+      "aadharFile": null,
+      "subscriptionFile": null
+    }
+  ],
+  "paymentReceipt": "data:application/pdf;base64,JVBERi0xLjQ..."
+}
+```
+
+**Response (Success 200):**
+```json
+{
+  "success": true,
+  "message": "Team registration successful",
+  "data": {
+    "team_id": "ICCT26-20251105143934",
+    "team_name": "Warriors",
+    "captain_name": "John Doe",
+    "players_count": 11,
+    "registered_at": "2025-11-05T14:39:34.123456",
+    "email_sent": true,
+    "database_saved": true
+  }
+}
+```
+
+**Response (Validation Error 422):**
+```json
+{
+  "detail": [
+    {
+      "loc": ["body", "players"],
+      "msg": "Team must have 11-15 players",
+      "type": "value_error"
+    }
+  ]
+}
+```
+
+### Simple API (Testing)
+
+#### GET `/`
+Health check
+
+**Response:**
+```json
+{
+  "message": "ICCT26 Backend connected to PostgreSQL successfully"
+}
+```
+
+#### POST `/register/team?name=Warriors&captain=John+Doe`
+Simple team registration
+
+**Response:**
+```json
+{
+  "id": 1,
+  "name": "Warriors",
+  "captain": "John Doe"
+}
+```
+
+---
+
+## 🧪 Testing
+
+### Swagger UI (Interactive Documentation)
+
+**Main API**: http://localhost:8000/docs
+**Simple API**: http://localhost:8001/docs
+
+Interactive API testing with request/response examples.
+
+### Automated Test Scripts
+
+```bash
+# Test main API with full registration
+python scripts/test_registration_simple.py
+
+# Test simple API
+python scripts/test_simple_api.py
+```
+
+### Manual Testing with curl
+
+```bash
+# Health check
+curl http://localhost:8000/
+
+# Register team (simple API)
+curl -X POST "http://localhost:8001/register/team?name=Warriors&captain=John%20Doe"
+
+# Register team with full details (main API)
+curl -X POST "http://localhost:8000/register/team" \
+  -H "Content-Type: application/json" \
+  -d @registration_data.json
+```
+
+### Database Verification
+
+```bash
+# Connect to PostgreSQL
+psql -U postgres -d icct26_db
+
+# View teams
+SELECT * FROM team_registrations;
+
+# View captains
+SELECT c.name, c.email, t.team_name 
+FROM captains c 
+JOIN team_registrations t ON c.registration_id = t.id;
+
+# View players count
+SELECT t.team_name, COUNT(p.id) as player_count
+FROM team_registrations t
+LEFT JOIN players p ON t.id = p.registration_id
+GROUP BY t.team_name;
+
+# Count registrations
+SELECT COUNT(*) as total_registrations FROM team_registrations;
+```
+
+---
+
+## 🐛 Troubleshooting
+
+### Database Connection Issues
+
+**Error**: `password authentication failed for user "postgres"`
+
+**Solution**:
+```bash
+# Reset PostgreSQL password
+psql -U postgres -c "ALTER USER postgres PASSWORD 'icctpg';"
+
+# Update .env with correct password
+DATABASE_URL=postgresql+asyncpg://postgres:icctpg@localhost/icct26_db
+```
+
+### Database Does Not Exist
+
+**Error**: `database "icct26_db" does not exist`
+
+**Solution**:
+```bash
+# Initialize database
+python init_db.py
+
+# Or manually create
+createdb -U postgres icct26_db
+```
+
+### SMTP Connection Failed
+
+**Error**: `smtplib.SMTPAuthenticationError: (535, b'5.7.8 Username and password not accepted')`
+
+**Solution**:
+1. Verify email and password in `.env`
+2. For Gmail, use App Password (not main password)
+3. Ensure 2-factor authentication is enabled
+4. Check SMTP settings are correct
+
+### Port Already in Use
+
+**Error**: `Address already in use: ('0.0.0.0', 8000)`
+
+**Solution**:
+```bash
+# Use different port
+uvicorn main:app --port 8001
+
+# Or kill process using port
+# Windows
+netstat -ano | findstr :8000
+taskkill /PID <PID> /F
+
+# Linux/macOS
+lsof -i :8000
+kill -9 <PID>
+```
+
+### Module Not Found
+
+**Error**: `ModuleNotFoundError: No module named 'fastapi'`
+
+**Solution**:
+```bash
+# Activate virtual environment
+.\venv\Scripts\activate  # Windows
+source venv/bin/activate  # Linux/macOS
+
+# Install dependencies
+pip install -r requirements.txt
+```
+
+---
+
+## 🚀 Production Deployment
+
+### Environment Setup
+
+```env
+# Production .env
+DATABASE_URL=postgresql+asyncpg://prod_user:strong_password@prod-db-server/icct26_db
+SMTP_SERVER=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USERNAME=team@icct26.com
+SMTP_PASSWORD=secure_app_password
+SMTP_FROM_EMAIL=team@icct26.com
+SMTP_FROM_NAME=ICCT26 Tournament Team
+
+PORT=8000
+ENVIRONMENT=production
+```
+
+### Docker Deployment
+
+**Dockerfile:**
+```dockerfile
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application
+COPY . .
+
+# Run database initialization
+RUN python init_db.py
+
+# Expose port
+EXPOSE 8000
+
+# Run application
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+```
+
+**Build and Run:**
+```bash
+docker build -t icct26-backend .
+docker run -p 8000:8000 --env-file .env icct26-backend
+```
+
+### PostgreSQL Production Setup
+
+```sql
+-- Create dedicated user
+CREATE USER icct26_user WITH PASSWORD 'secure_password';
+
+-- Create database
+CREATE DATABASE icct26_db OWNER icct26_user;
+
+-- Grant permissions
+GRANT ALL PRIVILEGES ON DATABASE icct26_db TO icct26_user;
+\c icct26_db
+GRANT ALL ON SCHEMA public TO icct26_user;
+```
+
+### Security Checklist
+
+- [ ] Use strong database passwords (12+ characters, mixed case, numbers, symbols)
+- [ ] Enable HTTPS/SSL in production
+- [ ] Use environment variables for all secrets
+- [ ] Never commit `.env` to version control
+- [ ] Implement rate limiting on API endpoints
+- [ ] Use Gmail App Passwords (not main password)
+- [ ] Enable database backups
+- [ ] Monitor application logs
+- [ ] Set up firewall rules
+- [ ] Use VPN for database connections
+
+---
+
+## 📚 Documentation
+
+- **PostgreSQL Setup Guide**: [`POSTGRESQL_SETUP.md`](./POSTGRESQL_SETUP.md)
+- **Simple API Documentation**: [`SIMPLE_API_README.md`](./SIMPLE_API_README.md)
+- **Swagger UI**: http://localhost:8000/docs
+- **ReDoc**: http://localhost:8000/redoc
+- **FastAPI Docs**: https://fastapi.tiangolo.com/
+- **SQLAlchemy Docs**: https://docs.sqlalchemy.org/
+- **PostgreSQL Docs**: https://www.postgresql.org/docs/
 
 ---
 
 ## 🤝 Contributing
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit changes (`git commit -m 'Add amazing feature'`)
-4. Push to branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+1. Create a feature branch: `git checkout -b feature/your-feature`
+2. Make changes and commit: `git commit -m "Add feature"`
+3. Push to branch: `git push origin feature/your-feature`
+4. Submit a Pull Request
 
 ---
 
-## 📝 License & Credits
+## 📞 Support
 
-- **Event:** ICCT26 Cricket Tournament 2026
-- **Organized by:** CSI St. Peter's Church, Coimbatore
-- **Built with:** FastAPI, Pydantic, Google Sheets API, SMTP
-- **Tech Stack:** Python 3.11+, async/await, background workers
-
----
-
-## 📞 Support & Troubleshooting
-
-### Common Issues
-
-**"ModuleNotFoundError: No module named 'fastapi'"**
-```bash
-pip install -r requirements.txt
-```
-
-**"Google Sheets API error"**
-- Check `SPREADSHEET_ID` in `.env`
-- Verify service account has Editor access to sheet
-- See [Google Setup Guide](./docs/GOOGLE_CREDENTIALS_SETUP.md)
-
-**"SMTP authentication failed"**
-- Use app password, not account password
-- Check SMTP credentials in `.env`
-- Run `python test_email.py` to verify
-
-**"Port 8000 already in use"**
-```bash
-# Use different port
-uvicorn main:app --port 8001
-```
-
-### Documentation Links
-- 📖 [Full API Reference](./docs/MODELS_DOCUMENTATION.md)
-- 🔧 [Google Cloud Setup](./docs/GOOGLE_CREDENTIALS_SETUP.md)
-- ⚛️ [React Frontend Guide](./docs/REGISTRATION_REFACTOR.md)
-- 🌐 [Interactive API Docs](http://localhost:8000/docs)
+For issues or questions:
+1. Check the [Troubleshooting](#troubleshooting) section
+2. Review [`POSTGRESQL_SETUP.md`](./POSTGRESQL_SETUP.md)
+3. Check API documentation at `/docs`
+4. Review test scripts for usage examples
+5. Open an issue on GitHub
 
 ---
 
-**Made with ❤️ for ICCT26 Cricket Tournament | 2026**
+## 📄 License
+
+ICCT26 Cricket Tournament - CSI St. Peter's Church, Coimbatore
+
+---
+
+## ✅ Project Status
+
+- ✅ FastAPI framework setup
+- ✅ PostgreSQL integration (async)
+- ✅ SQLAlchemy ORM models
+- ✅ Pydantic data validation
+- ✅ SMTP email notifications
+- ✅ REST API endpoints
+- ✅ Test scripts and automation
+- ✅ Comprehensive documentation
+- ✅ Error handling and logging
+- ✅ Database schema and migrations
+- ✅ Production-ready configuration
+- ✅ Docker support
+
+---
+
+**Last Updated**: November 5, 2025
+**Version**: 1.0.0
+**Status**: ✅ Production Ready
+**Python**: 3.11+
+**PostgreSQL**: 17+
+**FastAPI**: 0.104+
