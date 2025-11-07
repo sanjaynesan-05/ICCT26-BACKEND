@@ -17,10 +17,16 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import uvicorn
 
-# Database imports
+# NEW: Import synchronous database and models
+from sqlalchemy.orm import Session
+from sqlalchemy import text
+from database import get_db, engine, Base
+from models import Team, Player
+
+# Database imports (keep for old endpoints)
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker as async_sessionmaker
 from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, JSON, select, func
 from sqlalchemy.dialects.postgresql import JSONB
 
@@ -28,13 +34,56 @@ from sqlalchemy.dialects.postgresql import JSONB
 load_dotenv()
 
 # ============================================================
-# Database Configuration
+# Async Database Configuration (For old async endpoints)
 # ============================================================
-DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql+asyncpg://user:password@localhost/icct26_db')
+DATABASE_URL_ASYNC = os.getenv('DATABASE_URL', 'postgresql+asyncpg://user:password@localhost/icct26_db')
+if 'postgresql://icctadmin' in DATABASE_URL_ASYNC:
+    DATABASE_URL_ASYNC = DATABASE_URL_ASYNC.replace('postgresql://', 'postgresql+asyncpg://')
 
-engine = create_async_engine(DATABASE_URL, echo=True)
-async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-Base = declarative_base()
+async_engine = create_async_engine(DATABASE_URL_ASYNC, echo=False)
+AsyncSessionLocal = async_sessionmaker(async_engine, class_=AsyncSession, expire_on_commit=False)
+AsyncBase = declarative_base()
+
+# Define async database models (for old endpoints only)
+class TeamRegistrationDB(AsyncBase):
+    __tablename__ = "team_registrations"
+    id = Column(Integer, primary_key=True, index=True)
+    team_id = Column(String(50), unique=True, index=True)
+    church_name = Column(String(200))
+    team_name = Column(String(100))
+    pastor_letter = Column(Text, nullable=True)
+    payment_receipt = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+class CaptainDB(AsyncBase):
+    __tablename__ = "captains"
+    id = Column(Integer, primary_key=True, index=True)
+    registration_id = Column(Integer, ForeignKey("team_registrations.id"))
+    name = Column(String(100))
+    phone = Column(String(15))
+    whatsapp = Column(String(10))
+    email = Column(String(255))
+
+class ViceCaptainDB(AsyncBase):
+    __tablename__ = "vice_captains"
+    id = Column(Integer, primary_key=True, index=True)
+    registration_id = Column(Integer, ForeignKey("team_registrations.id"))
+    name = Column(String(100))
+    phone = Column(String(15))
+    whatsapp = Column(String(10))
+    email = Column(String(255))
+
+class PlayerDB(AsyncBase):
+    __tablename__ = "players"
+    id = Column(Integer, primary_key=True, index=True)
+    registration_id = Column(Integer, ForeignKey("team_registrations.id"))
+    name = Column(String(100))
+    age = Column(Integer)
+    phone = Column(String(15))
+    role = Column(String(20))
+    aadhar_file = Column(Text, nullable=True)
+    subscription_file = Column(Text, nullable=True)
 
 # ============================================================
 # SMTP Configuration
@@ -47,55 +96,7 @@ SMTP_FROM_EMAIL = os.getenv('SMTP_FROM_EMAIL', SMTP_USERNAME)
 SMTP_FROM_NAME = os.getenv('SMTP_FROM_NAME', 'ICCT26 Cricket Tournament')
 
 # ============================================================
-# Database Models
-# ============================================================
-
-class TeamRegistrationDB(Base):
-    __tablename__ = "team_registrations"
-
-    id = Column(Integer, primary_key=True, index=True)
-    team_id = Column(String(50), unique=True, index=True)
-    church_name = Column(String(200))
-    team_name = Column(String(100))
-    pastor_letter = Column(Text, nullable=True)
-    payment_receipt = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-class CaptainDB(Base):
-    __tablename__ = "captains"
-
-    id = Column(Integer, primary_key=True, index=True)
-    registration_id = Column(Integer, ForeignKey("team_registrations.id"))
-    name = Column(String(100))
-    phone = Column(String(15))
-    whatsapp = Column(String(10))
-    email = Column(String(255))
-
-class ViceCaptainDB(Base):
-    __tablename__ = "vice_captains"
-
-    id = Column(Integer, primary_key=True, index=True)
-    registration_id = Column(Integer, ForeignKey("team_registrations.id"))
-    name = Column(String(100))
-    phone = Column(String(15))
-    whatsapp = Column(String(10))
-    email = Column(String(255))
-
-class PlayerDB(Base):
-    __tablename__ = "players"
-
-    id = Column(Integer, primary_key=True, index=True)
-    registration_id = Column(Integer, ForeignKey("team_registrations.id"))
-    name = Column(String(100))
-    age = Column(Integer)
-    phone = Column(String(15))
-    role = Column(String(20))
-    aadhar_file = Column(Text, nullable=True)
-    subscription_file = Column(Text, nullable=True)
-
-# ============================================================
-# Database Schema Models
+# Pydantic Models (Request/Response Schemas)
 # ============================================================
 
 class PlayerDetails(BaseModel):
@@ -162,12 +163,12 @@ class TeamRegistration(BaseModel):
 
 async def init_db():
     """Initialize database tables"""
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    async with async_engine.begin() as conn:
+        await conn.run_sync(AsyncBase.metadata.create_all)
 
-async def get_db():
-    """Get database session"""
-    async with async_session() as session:
+async def get_db_async():
+    """Get async database session for old endpoints"""
+    async with AsyncSessionLocal() as session:
         try:
             yield session
         finally:
@@ -438,7 +439,8 @@ async def read_root():
     return {
         "message": "ICCT26 Cricket Tournament Registration API",
         "version": "1.0.0",
-        "status": "active"
+        "status": "active",
+        "db": "PostgreSQL Connected"
     }
 
 
@@ -453,19 +455,26 @@ async def health_check():
 
 
 @app.get("/status")
-async def api_status():
-    """API status endpoint"""
+def api_status(db: Session = Depends(get_db)):
+    """API status endpoint with database check"""
+    try:
+        # Test database connection
+        db.execute(text("SELECT 1"))
+        db_status = "connected"
+    except Exception as e:
+        db_status = f"error: {str(e)}"
+    
     return {
         "status": "operational",
         "api_version": "1.0.0",
-        "database": "connected",
+        "database": db_status,
         "email_service": "configured",
         "timestamp": datetime.now().isoformat()
     }
 
 
 @app.get("/teams")
-async def get_teams(db: AsyncSession = Depends(get_db)):
+async def get_teams(db: AsyncSession = Depends(get_db_async)):
     """Get all registered teams"""
     try:
         result = await db.execute(select(TeamRegistrationDB))
@@ -500,11 +509,11 @@ async def queue_status():
 
 
 # ============================================================
-# Admin Panel Endpoints
+# Admin Panel Endpoints (Using Synchronous DB)
 # ============================================================
 
 @app.get("/admin/teams")
-async def admin_get_teams(db: AsyncSession = Depends(get_db)):
+def admin_get_teams(db: Session = Depends(get_db)):
     """
     Get all registered teams with player count.
     
@@ -516,136 +525,66 @@ async def admin_get_teams(db: AsyncSession = Depends(get_db)):
     - Payment receipt status
     """
     try:
-        # Query to get teams with player count
-        query = select(
-            TeamRegistrationDB.team_id.label("teamId"),
-            TeamRegistrationDB.team_name.label("teamName"),
-            TeamRegistrationDB.church_name.label("churchName"),
-            CaptainDB.name.label("captainName"),
-            CaptainDB.phone.label("captainPhone"),
-            CaptainDB.email.label("captainEmail"),
-            ViceCaptainDB.name.label("viceCaptainName"),
-            ViceCaptainDB.phone.label("viceCaptainPhone"),
-            ViceCaptainDB.email.label("viceCaptainEmail"),
-            TeamRegistrationDB.payment_receipt.label("paymentReceipt"),
-            TeamRegistrationDB.created_at.label("registrationDate"),
-            func.count(PlayerDB.id).label("playerCount")
-        ).select_from(TeamRegistrationDB).outerjoin(
-            CaptainDB, CaptainDB.registration_id == TeamRegistrationDB.id
-        ).outerjoin(
-            ViceCaptainDB, ViceCaptainDB.registration_id == TeamRegistrationDB.id
-        ).outerjoin(
-            PlayerDB, PlayerDB.registration_id == TeamRegistrationDB.id
-        ).group_by(
-            TeamRegistrationDB.id,
-            TeamRegistrationDB.team_id,
-            TeamRegistrationDB.team_name,
-            TeamRegistrationDB.church_name,
-            TeamRegistrationDB.created_at,
-            TeamRegistrationDB.payment_receipt,
-            CaptainDB.name,
-            CaptainDB.phone,
-            CaptainDB.email,
-            ViceCaptainDB.name,
-            ViceCaptainDB.phone,
-            ViceCaptainDB.email
-        ).order_by(TeamRegistrationDB.created_at.desc())
-
-        result = await db.execute(query)
-        teams_data = result.all()
-
-        teams = [
-            {
-                "teamId": team.teamId,
-                "teamName": team.teamName,
-                "churchName": team.churchName,
-                "captainName": team.captainName,
-                "captainPhone": team.captainPhone,
-                "captainEmail": team.captainEmail,
-                "viceCaptainName": team.viceCaptainName,
-                "viceCaptainPhone": team.viceCaptainPhone,
-                "viceCaptainEmail": team.viceCaptainEmail,
-                "paymentReceipt": team.paymentReceipt is not None,
-                "registrationDate": team.registrationDate.isoformat() if team.registrationDate else None,
-                "playerCount": team.playerCount or 0
-            }
-            for team in teams_data
-        ]
-
-        return {
-            "success": True,
-            "count": len(teams),
-            "teams": teams
-        }
-
+        # Query team registrations with captain info
+        registrations = db.query(TeamRegistrationDB).all()
+        result = []
+        
+        for reg in registrations:
+            # Get captain
+            captain = db.query(CaptainDB).filter(CaptainDB.registration_id == reg.id).first()
+            # Get vice captain
+            vice_captain = db.query(ViceCaptainDB).filter(ViceCaptainDB.registration_id == reg.id).first()
+            # Get player count
+            player_count = db.query(PlayerDB).filter(PlayerDB.registration_id == reg.id).count()
+            
+            result.append({
+                "teamId": reg.team_id,
+                "teamName": reg.team_name,
+                "churchName": reg.church_name,
+                "captainName": captain.name if captain else None,
+                "captainPhone": captain.phone if captain else None,
+                "captainEmail": captain.email if captain else None,
+                "viceCaptainName": vice_captain.name if vice_captain else None,
+                "viceCaptainPhone": vice_captain.phone if vice_captain else None,
+                "viceCaptainEmail": vice_captain.email if vice_captain else None,
+                "playerCount": player_count,
+                "registrationDate": str(reg.created_at) if reg.created_at else None,
+                "paymentReceipt": reg.payment_receipt
+            })
+        
+        return {"success": True, "teams": result}
+    
     except Exception as e:
         print(f"❌ Error fetching teams: {str(e)}")
-        return JSONResponse(
-            status_code=500,
-            content={
-                "success": False,
-                "error": "Internal Server Error",
-                "message": "Failed to fetch teams",
-                "detail": str(e)
-            }
-        )
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/admin/teams/{team_id}")
-async def admin_get_team_details(team_id: str, db: AsyncSession = Depends(get_db)):
+def admin_get_team_details(team_id: str, db: Session = Depends(get_db)):
     """
     Get detailed information about a specific team and its player roster.
     
     Parameters:
-    - team_id: The unique team identifier
+    - team_id: The unique team identifier (string, e.g., 'ICCT26-0001')
     
     Returns:
     - Team information (ID, Name, Church, Captain, Vice-Captain, etc.)
     - Complete player roster with all details
     """
     try:
-        # Get team information
-        team_query = select(TeamRegistrationDB).where(
-            TeamRegistrationDB.team_id == team_id
-        )
-        team_result = await db.execute(team_query)
-        team = team_result.scalars().first()
-
+        team = db.query(TeamRegistrationDB).filter(TeamRegistrationDB.team_id == team_id).first()
+        
         if not team:
-            return JSONResponse(
-                status_code=404,
-                content={
-                    "success": False,
-                    "error": "Not Found",
-                    "message": f"Team with ID '{team_id}' not found",
-                    "detail": f"No team exists with the given team_id: {team_id}"
-                }
-            )
-
-        # Get captain information
-        captain_query = select(CaptainDB).where(
-            CaptainDB.registration_id == team.id
-        )
-        captain_result = await db.execute(captain_query)
-        captain = captain_result.scalars().first()
-
-        # Get vice-captain information
-        vice_captain_query = select(ViceCaptainDB).where(
-            ViceCaptainDB.registration_id == team.id
-        )
-        vice_captain_result = await db.execute(vice_captain_query)
-        vice_captain = vice_captain_result.scalars().first()
-
-        # Get all players
-        players_query = select(PlayerDB).where(
-            PlayerDB.registration_id == team.id
-        ).order_by(PlayerDB.id)
-        players_result = await db.execute(players_query)
-        players = players_result.scalars().all()
-
-        # Build response
-        team_detail = {
-            "success": True,
+            raise HTTPException(status_code=404, detail="Team not found")
+        
+        # Get captain
+        captain = db.query(CaptainDB).filter(CaptainDB.registration_id == team.id).first()
+        # Get vice captain
+        vice_captain = db.query(ViceCaptainDB).filter(ViceCaptainDB.registration_id == team.id).first()
+        # Get players
+        players = db.query(PlayerDB).filter(PlayerDB.registration_id == team.id).all()
+        
+        return {
             "team": {
                 "teamId": team.team_id,
                 "teamName": team.team_name,
@@ -653,126 +592,79 @@ async def admin_get_team_details(team_id: str, db: AsyncSession = Depends(get_db
                 "captain": {
                     "name": captain.name if captain else None,
                     "phone": captain.phone if captain else None,
-                    "whatsapp": captain.whatsapp if captain else None,
                     "email": captain.email if captain else None
                 } if captain else None,
                 "viceCaptain": {
                     "name": vice_captain.name if vice_captain else None,
                     "phone": vice_captain.phone if vice_captain else None,
-                    "whatsapp": vice_captain.whatsapp if vice_captain else None,
                     "email": vice_captain.email if vice_captain else None
                 } if vice_captain else None,
-                "pastorLetter": team.pastor_letter is not None,
-                "paymentReceipt": team.payment_receipt is not None,
-                "registrationDate": team.created_at.isoformat() if team.created_at else None,
-                "players": [
-                    {
-                        "playerId": player.id,
-                        "name": player.name,
-                        "age": player.age,
-                        "phone": player.phone,
-                        "role": player.role,
-                        "aadharFile": player.aadhar_file is not None,
-                        "subscriptionFile": player.subscription_file is not None
-                    }
-                    for player in players
-                ],
-                "playerCount": len(players)
-            }
+                "paymentReceipt": team.payment_receipt,
+                "registrationDate": str(team.created_at) if team.created_at else None
+            },
+            "players": [
+                {
+                    "playerId": p.id,
+                    "name": p.name,
+                    "age": p.age,
+                    "phone": p.phone,
+                    "role": p.role
+                } for p in players
+            ]
         }
-
-        return team_detail
-
+    
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"❌ Error fetching team details: {str(e)}")
-        return JSONResponse(
-            status_code=500,
-            content={
-                "success": False,
-                "error": "Internal Server Error",
-                "message": "Failed to fetch team details",
-                "detail": str(e)
-            }
-        )
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/admin/players/{player_id}")
-async def admin_get_player_details(player_id: int, db: AsyncSession = Depends(get_db)):
+def admin_get_player_details(player_id: int, db: Session = Depends(get_db)):
     """
     Fetch details of a specific player with team context.
     
     Parameters:
-    - player_id: The unique player identifier (integer)
+    - player_id: The unique player identifier (integer ID)
     
     Returns:
-    - Player information (ID, Name, Age, Phone, Email, Role, etc.)
+    - Player information (ID, Name, Age, Phone, Role, etc.)
     - Team information (Team ID, Name, Church)
-    - Document availability (Aadhar, Subscription files)
     """
     try:
-        # Get player information with team details
-        query = select(
-            PlayerDB.id.label("playerId"),
-            PlayerDB.name.label("playerName"),
-            PlayerDB.age,
-            PlayerDB.phone.label("playerPhone"),
-            PlayerDB.role,
-            PlayerDB.aadhar_file.label("aadharFile"),
-            PlayerDB.subscription_file.label("subscriptionFile"),
-            TeamRegistrationDB.team_id.label("teamId"),
-            TeamRegistrationDB.team_name.label("teamName"),
-            TeamRegistrationDB.church_name.label("churchName")
-        ).select_from(PlayerDB).join(
-            TeamRegistrationDB, PlayerDB.registration_id == TeamRegistrationDB.id
-        ).where(PlayerDB.id == player_id)
-
-        result = await db.execute(query)
-        player_data = result.first()
-
-        if not player_data:
-            return JSONResponse(
-                status_code=404,
-                content={
-                    "success": False,
-                    "error": "Not Found",
-                    "message": f"Player with ID '{player_id}' not found",
-                    "detail": f"No player exists with the given player_id: {player_id}"
-                }
-            )
-
+        player = db.query(PlayerDB).filter(PlayerDB.id == player_id).first()
+        
+        if not player:
+            raise HTTPException(status_code=404, detail="Player not found")
+        
+        # Get team info
+        team = db.query(TeamRegistrationDB).filter(TeamRegistrationDB.id == player.registration_id).first()
+        
         return {
-            "success": True,
-            "player": {
-                "playerId": player_data.playerId,
-                "name": player_data.playerName,
-                "age": player_data.age,
-                "phone": player_data.playerPhone,
-                "role": player_data.role,
-                "aadharFile": player_data.aadharFile is not None,
-                "subscriptionFile": player_data.subscriptionFile is not None,
-                "team": {
-                    "teamId": player_data.teamId,
-                    "teamName": player_data.teamName,
-                    "churchName": player_data.churchName
-                }
+            "playerId": player.id,
+            "name": player.name,
+            "age": player.age,
+            "phone": player.phone,
+            "role": player.role,
+            "aadharFile": player.aadhar_file,
+            "subscriptionFile": player.subscription_file,
+            "team": {
+                "teamId": team.team_id if team else None,
+                "teamName": team.team_name if team else None,
+                "churchName": team.church_name if team else None
             }
         }
-
+    
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"❌ Error fetching player details: {str(e)}")
-        return JSONResponse(
-            status_code=500,
-            content={
-                "success": False,
-                "error": "Internal Server Error",
-                "message": "Failed to fetch player details",
-                "detail": str(e)
-            }
-        )
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/register/team")
-async def register_team(registration: TeamRegistration, db: AsyncSession = Depends(get_db)):
+async def register_team(registration: TeamRegistration, db: AsyncSession = Depends(get_db_async)):
     """Register a team for the tournament"""
     try:
         # Validate input
