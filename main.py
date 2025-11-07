@@ -5,6 +5,7 @@ Clean implementation with SMTP email and database schema
 
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, EmailStr, validator
 from typing import Optional, List
 from datetime import datetime
@@ -20,7 +21,7 @@ import uvicorn
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, JSON, select
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, JSON, select, func
 from sqlalchemy.dialects.postgresql import JSONB
 
 # Load environment variables
@@ -496,6 +497,278 @@ async def queue_status():
         "processed_registrations": 0,
         "message": "Queue system ready"
     }
+
+
+# ============================================================
+# Admin Panel Endpoints
+# ============================================================
+
+@app.get("/admin/teams")
+async def admin_get_teams(db: AsyncSession = Depends(get_db)):
+    """
+    Get all registered teams with player count.
+    
+    Returns a list of all teams with essential information:
+    - Team ID, Name, Church Name
+    - Captain and Vice-Captain details
+    - Player count
+    - Registration date
+    - Payment receipt status
+    """
+    try:
+        # Query to get teams with player count
+        query = select(
+            TeamRegistrationDB.team_id.label("teamId"),
+            TeamRegistrationDB.team_name.label("teamName"),
+            TeamRegistrationDB.church_name.label("churchName"),
+            CaptainDB.name.label("captainName"),
+            CaptainDB.phone.label("captainPhone"),
+            CaptainDB.email.label("captainEmail"),
+            ViceCaptainDB.name.label("viceCaptainName"),
+            ViceCaptainDB.phone.label("viceCaptainPhone"),
+            ViceCaptainDB.email.label("viceCaptainEmail"),
+            TeamRegistrationDB.payment_receipt.label("paymentReceipt"),
+            TeamRegistrationDB.created_at.label("registrationDate"),
+            func.count(PlayerDB.id).label("playerCount")
+        ).select_from(TeamRegistrationDB).outerjoin(
+            CaptainDB, CaptainDB.registration_id == TeamRegistrationDB.id
+        ).outerjoin(
+            ViceCaptainDB, ViceCaptainDB.registration_id == TeamRegistrationDB.id
+        ).outerjoin(
+            PlayerDB, PlayerDB.registration_id == TeamRegistrationDB.id
+        ).group_by(
+            TeamRegistrationDB.id,
+            TeamRegistrationDB.team_id,
+            TeamRegistrationDB.team_name,
+            TeamRegistrationDB.church_name,
+            TeamRegistrationDB.created_at,
+            TeamRegistrationDB.payment_receipt,
+            CaptainDB.name,
+            CaptainDB.phone,
+            CaptainDB.email,
+            ViceCaptainDB.name,
+            ViceCaptainDB.phone,
+            ViceCaptainDB.email
+        ).order_by(TeamRegistrationDB.created_at.desc())
+
+        result = await db.execute(query)
+        teams_data = result.all()
+
+        teams = [
+            {
+                "teamId": team.teamId,
+                "teamName": team.teamName,
+                "churchName": team.churchName,
+                "captainName": team.captainName,
+                "captainPhone": team.captainPhone,
+                "captainEmail": team.captainEmail,
+                "viceCaptainName": team.viceCaptainName,
+                "viceCaptainPhone": team.viceCaptainPhone,
+                "viceCaptainEmail": team.viceCaptainEmail,
+                "paymentReceipt": team.paymentReceipt is not None,
+                "registrationDate": team.registrationDate.isoformat() if team.registrationDate else None,
+                "playerCount": team.playerCount or 0
+            }
+            for team in teams_data
+        ]
+
+        return {
+            "success": True,
+            "count": len(teams),
+            "teams": teams
+        }
+
+    except Exception as e:
+        print(f"❌ Error fetching teams: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "success": False,
+                "error": "Internal Server Error",
+                "message": "Failed to fetch teams",
+                "detail": str(e)
+            }
+        )
+
+
+@app.get("/admin/teams/{team_id}")
+async def admin_get_team_details(team_id: str, db: AsyncSession = Depends(get_db)):
+    """
+    Get detailed information about a specific team and its player roster.
+    
+    Parameters:
+    - team_id: The unique team identifier
+    
+    Returns:
+    - Team information (ID, Name, Church, Captain, Vice-Captain, etc.)
+    - Complete player roster with all details
+    """
+    try:
+        # Get team information
+        team_query = select(TeamRegistrationDB).where(
+            TeamRegistrationDB.team_id == team_id
+        )
+        team_result = await db.execute(team_query)
+        team = team_result.scalars().first()
+
+        if not team:
+            return JSONResponse(
+                status_code=404,
+                content={
+                    "success": False,
+                    "error": "Not Found",
+                    "message": f"Team with ID '{team_id}' not found",
+                    "detail": f"No team exists with the given team_id: {team_id}"
+                }
+            )
+
+        # Get captain information
+        captain_query = select(CaptainDB).where(
+            CaptainDB.registration_id == team.id
+        )
+        captain_result = await db.execute(captain_query)
+        captain = captain_result.scalars().first()
+
+        # Get vice-captain information
+        vice_captain_query = select(ViceCaptainDB).where(
+            ViceCaptainDB.registration_id == team.id
+        )
+        vice_captain_result = await db.execute(vice_captain_query)
+        vice_captain = vice_captain_result.scalars().first()
+
+        # Get all players
+        players_query = select(PlayerDB).where(
+            PlayerDB.registration_id == team.id
+        ).order_by(PlayerDB.id)
+        players_result = await db.execute(players_query)
+        players = players_result.scalars().all()
+
+        # Build response
+        team_detail = {
+            "success": True,
+            "team": {
+                "teamId": team.team_id,
+                "teamName": team.team_name,
+                "churchName": team.church_name,
+                "captain": {
+                    "name": captain.name if captain else None,
+                    "phone": captain.phone if captain else None,
+                    "whatsapp": captain.whatsapp if captain else None,
+                    "email": captain.email if captain else None
+                } if captain else None,
+                "viceCaptain": {
+                    "name": vice_captain.name if vice_captain else None,
+                    "phone": vice_captain.phone if vice_captain else None,
+                    "whatsapp": vice_captain.whatsapp if vice_captain else None,
+                    "email": vice_captain.email if vice_captain else None
+                } if vice_captain else None,
+                "pastorLetter": team.pastor_letter is not None,
+                "paymentReceipt": team.payment_receipt is not None,
+                "registrationDate": team.created_at.isoformat() if team.created_at else None,
+                "players": [
+                    {
+                        "playerId": player.id,
+                        "name": player.name,
+                        "age": player.age,
+                        "phone": player.phone,
+                        "role": player.role,
+                        "aadharFile": player.aadhar_file is not None,
+                        "subscriptionFile": player.subscription_file is not None
+                    }
+                    for player in players
+                ],
+                "playerCount": len(players)
+            }
+        }
+
+        return team_detail
+
+    except Exception as e:
+        print(f"❌ Error fetching team details: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "success": False,
+                "error": "Internal Server Error",
+                "message": "Failed to fetch team details",
+                "detail": str(e)
+            }
+        )
+
+
+@app.get("/admin/players/{player_id}")
+async def admin_get_player_details(player_id: int, db: AsyncSession = Depends(get_db)):
+    """
+    Fetch details of a specific player with team context.
+    
+    Parameters:
+    - player_id: The unique player identifier (integer)
+    
+    Returns:
+    - Player information (ID, Name, Age, Phone, Email, Role, etc.)
+    - Team information (Team ID, Name, Church)
+    - Document availability (Aadhar, Subscription files)
+    """
+    try:
+        # Get player information with team details
+        query = select(
+            PlayerDB.id.label("playerId"),
+            PlayerDB.name.label("playerName"),
+            PlayerDB.age,
+            PlayerDB.phone.label("playerPhone"),
+            PlayerDB.role,
+            PlayerDB.aadhar_file.label("aadharFile"),
+            PlayerDB.subscription_file.label("subscriptionFile"),
+            TeamRegistrationDB.team_id.label("teamId"),
+            TeamRegistrationDB.team_name.label("teamName"),
+            TeamRegistrationDB.church_name.label("churchName")
+        ).select_from(PlayerDB).join(
+            TeamRegistrationDB, PlayerDB.registration_id == TeamRegistrationDB.id
+        ).where(PlayerDB.id == player_id)
+
+        result = await db.execute(query)
+        player_data = result.first()
+
+        if not player_data:
+            return JSONResponse(
+                status_code=404,
+                content={
+                    "success": False,
+                    "error": "Not Found",
+                    "message": f"Player with ID '{player_id}' not found",
+                    "detail": f"No player exists with the given player_id: {player_id}"
+                }
+            )
+
+        return {
+            "success": True,
+            "player": {
+                "playerId": player_data.playerId,
+                "name": player_data.playerName,
+                "age": player_data.age,
+                "phone": player_data.playerPhone,
+                "role": player_data.role,
+                "aadharFile": player_data.aadharFile is not None,
+                "subscriptionFile": player_data.subscriptionFile is not None,
+                "team": {
+                    "teamId": player_data.teamId,
+                    "teamName": player_data.teamName,
+                    "churchName": player_data.churchName
+                }
+            }
+        }
+
+    except Exception as e:
+        print(f"❌ Error fetching player details: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "success": False,
+                "error": "Internal Server Error",
+                "message": "Failed to fetch player details",
+                "detail": str(e)
+            }
+        )
 
 
 @app.post("/register/team")

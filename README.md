@@ -1,158 +1,233 @@
-# 🏏 ICCT26 Cricket Tournament Backend API
+# ICCT26 Backend API
 
-A professional, production-ready FastAPI backend for the **ICCT26 Cricket Tournament** registration system with PostgreSQL database integration, SMTP email notifications, and comprehensive API documentation.
+A modern, production-ready FastAPI backend for managing teams, players, and administrative operations with comprehensive email notification capabilities.
 
-**Organized by**: CSI St. Peter's Church, Coimbatore
+**Status:** ✅ Production Ready | **Python:** 3.8+ | **Framework:** FastAPI | **Database:** PostgreSQL
 
 ---
 
 ## 📋 Table of Contents
 
-- [Overview](#overview)
-- [Features](#features)
-- [Tech Stack](#tech-stack)
-- [Project Structure](#project-structure)
 - [Quick Start](#quick-start)
-- [Installation](#installation)
-- [Configuration](#configuration)
-- [Database Schema](#database-schema)
+- [Project Overview](#project-overview)
+- [Architecture](#architecture)
 - [API Endpoints](#api-endpoints)
-- [Testing](#testing)
-- [Troubleshooting](#troubleshooting)
-- [Production Deployment](#production-deployment)
-
----
-
-## 🎯 Overview
-
-The ICCT26 Backend provides a complete REST API for cricket tournament team registration. Teams can register with 11-15 players, and the system automatically:
-- Validates all input data using Pydantic models
-- Stores registrations in PostgreSQL database
-- Sends confirmation emails to team captains
-- Generates unique team IDs for tracking
-
-### Event Details
-- **Event**: ICCT26 Cricket Tournament 2026
-- **Format**: Red Tennis Ball Cricket  
-- **Dates**: January 24-26, 2026
-- **Venue**: CSI St. Peter's Church, Coimbatore
-
----
-
-## ✨ Features
-
-### Core Functionality
-- ✅ **Complete Team Registration** - Register teams with 11-15 players
-- ✅ **Multi-Role Player System** - Support for Batsman, Bowler, All-Rounder, Wicket Keeper
-- ✅ **Document Management** - Base64 encoded PDF file uploads (Aadhar, Subscription, Pastor Letter, Payment Receipt)
-- ✅ **Email Notifications** - Automatic confirmation emails to team captains
-- ✅ **Unique Team IDs** - Auto-generated identifiers for tracking
-
-### Technical Features
-- ✅ **PostgreSQL Integration** - Persistent, relational data storage
-- ✅ **SQLAlchemy ORM** - Object-relational mapping with async support
-- ✅ **Pydantic Validation** - Strict input/output validation
-- ✅ **CORS Support** - Frontend integration ready
-- ✅ **API Documentation** - Auto-generated Swagger UI and ReDoc
-- ✅ **Error Handling** - Comprehensive exception handling
-- ✅ **Async Operations** - Non-blocking database operations with asyncpg
-- ✅ **SMTP Email** - Gmail and custom SMTP provider support
-
----
-
-## 🛠️ Tech Stack
-
-| Component | Technology | Version |
-|-----------|-----------|---------|
-| **Framework** | FastAPI | 0.104+ |
-| **Server** | Uvicorn | 0.24+ |
-| **Database** | PostgreSQL | 17+ |
-| **ORM** | SQLAlchemy | 2.0+ |
-| **Async Driver** | asyncpg | 0.29+ |
-| **Validation** | Pydantic | 2.5+ |
-| **Python** | Python | 3.11+ |
-
----
-
-## 📂 Project Structure
-
-```
-ICCT26-BACKEND/
-│
-├── 📄 Core Application Files
-│   ├── main.py                    # FastAPI application (production)
-│   ├── simple_main.py             # Simple FastAPI app (testing)
-│   ├── database.py                # SQLAlchemy configuration
-│   ├── models.py                  # SQLAlchemy ORM models
-│   └── init_db.py                 # Database initialization
-│
-├── 📁 scripts/                    # Utility scripts
-│   ├── test_registration_simple.py     # Full API test
-│   ├── test_simple_api.py              # Simple API test
-│   ├── setup_database.py               # Database setup
-│   ├── setup_postgres.bat              # Windows PostgreSQL setup
-│   └── setup_postgres.sh               # Linux/macOS setup
-│
-├── 📁 docs/                       # Documentation
-│   └── POSTGRESQL_SETUP.md        # PostgreSQL installation guide
-│
-├── 🔧 Configuration Files
-│   ├── requirements.txt           # Python dependencies
-│   ├── pyproject.toml             # Project metadata
-│   ├── .env                       # Environment variables (git ignored)
-│   └── .env.example               # Environment template
-│
-├── 📖 Documentation
-│   ├── README.md                  # This file
-│   └── SIMPLE_API_README.md       # Simple API documentation
-│
-└── 📦 Virtual Environment
-    ├── venv/                      # Python virtual environment
-    └── .git/                      # Git repository
-```
+- [Installation & Setup](#installation--setup)
+- [Configuration](#configuration)
+- [Running the Application](#running-the-application)
+- [Admin Panel](#admin-panel)
+- [Email Notifications](#email-notifications)
+- [Database Setup](#database-setup)
+- [Deployment](#deployment)
+- [Documentation](#documentation)
+- [Contributing](#contributing)
+- [Support](#support)
 
 ---
 
 ## 🚀 Quick Start
 
 ### Prerequisites
-- **Python**: 3.11 or higher
-- **PostgreSQL**: Version 17 or higher
-- **pip**: Python package manager
-- **Git**: For version control
+- Python 3.8 or higher
+- PostgreSQL 12 or higher
+- pip (Python package manager)
 
-### 1-Minute Setup
+### Installation (5 minutes)
 
 ```bash
-# Clone repository
-git clone <repo-url> && cd ICCT26-BACKEND
+# 1. Clone the repository
+git clone <repository-url>
+cd ICCT26_BACKEND
 
-# Create & activate virtual environment
+# 2. Create virtual environment
 python -m venv venv
-.\venv\Scripts\activate  # Windows
-# source venv/bin/activate  # Linux/macOS
 
-# Install dependencies
+# 3. Activate virtual environment
+# On Windows:
+.\venv\Scripts\activate
+# On macOS/Linux:
+source venv/bin/activate
+
+# 4. Install dependencies
 pip install -r requirements.txt
 
-# Initialize database
-python init_db.py
+# 5. Configure environment variables
+# Copy .env.example to .env and fill in your values
+cp .env.example .env  # or copy .env.example .env on Windows
 
-# Start server
-uvicorn main:app --reload
+# 6. Set up database
+# See Database Setup section below
+
+# 7. Run the application
+uvicorn main:app --reload --port 8000
 ```
 
-Open browser: **http://localhost:8000/docs**
+The API will be available at `http://localhost:8000`
+
+**Swagger Documentation:** `http://localhost:8000/docs`  
+**ReDoc Documentation:** `http://localhost:8000/redoc`
 
 ---
 
-## 📦 Installation
+## 📖 Project Overview
+
+### What This Project Does
+
+ICCT26 Backend is a comprehensive REST API that manages:
+
+✅ **Teams Management** - Create, read, update, and manage teams  
+✅ **Player Management** - Track players, their statistics, and assignments  
+✅ **Admin Panel** - Comprehensive admin endpoints for system management  
+✅ **Email Notifications** - Automated email system with template support  
+✅ **Security** - Role-based access control, secure credential handling  
+
+### Key Features
+
+| Feature | Description |
+|---------|-------------|
+| **FastAPI** | Modern async Python web framework with automatic OpenAPI docs |
+| **SQLAlchemy ORM** | Type-safe database operations with async support |
+| **PostgreSQL** | Robust, scalable relational database |
+| **Async/Await** | Non-blocking I/O for high performance |
+| **Email Integration** | SMTP-based email notifications with templates |
+| **Admin Panel** | Dedicated endpoints for administrative operations |
+| **Error Handling** | Comprehensive exception handling with meaningful responses |
+| **Type Hints** | Full type annotations for IDE support and code clarity |
+
+---
+
+## 🏗️ Architecture
+
+### Tech Stack
+
+```
+┌─────────────────────────────────────────┐
+│     FastAPI Web Framework               │
+│  (Async Python, Starlette-based)        │
+├─────────────────────────────────────────┤
+│     SQLAlchemy ORM + Alembic            │
+│  (Database abstraction, migrations)     │
+├─────────────────────────────────────────┤
+│     PostgreSQL Database                 │
+│  (Persistent data storage)              │
+├─────────────────────────────────────────┤
+│     Pydantic Models                     │
+│  (Request/Response validation)          │
+├─────────────────────────────────────────┤
+│     SMTP Email Service                  │
+│  (Email notifications)                  │
+└─────────────────────────────────────────┘
+```
+
+### Project Structure
+
+```
+ICCT26_BACKEND/
+├── main.py                          # Main FastAPI application
+├── requirements.txt                 # Python dependencies
+├── pyproject.toml                   # Project configuration
+├── .env.example                     # Environment variables template
+├── README.md                        # This file
+│
+├── venv/                            # Virtual environment (git-ignored)
+│
+└── docs/                            # Documentation
+    ├── INDEX.md                     # Documentation master index
+    ├── admin-panel/                 # Admin panel docs (8 files)
+    ├── api-reference/               # API reference docs (2 files)
+    ├── deployment/                  # Deployment guides (4 files)
+    ├── frontend/                    # Frontend integration (6 files)
+    ├── security/                    # Security guidelines (3 files)
+    └── setup/                       # Setup guides (3 files)
+```
+
+### Database Schema
+
+```sql
+-- Teams Table
+CREATE TABLE teams (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL UNIQUE,
+    description TEXT,
+    coach VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Players Table
+CREATE TABLE players (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    position VARCHAR(100),
+    jersey_number INT,
+    team_id INT REFERENCES teams(id) ON DELETE CASCADE,
+    email VARCHAR(255),
+    phone VARCHAR(20),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Indices for performance
+CREATE INDEX idx_players_team_id ON players(team_id);
+CREATE INDEX idx_players_email ON players(email);
+```
+
+---
+
+## 🔌 API Endpoints
+
+### Authentication Endpoints
+
+```
+GET  /auth/health           - Health check / API status
+```
+
+### Team Endpoints
+
+```
+GET    /teams               - Get all teams
+POST   /teams               - Create new team
+GET    /teams/{team_id}     - Get specific team
+PUT    /teams/{team_id}     - Update team
+DELETE /teams/{team_id}     - Delete team
+```
+
+### Player Endpoints
+
+```
+GET    /players             - Get all players
+POST   /players             - Create new player
+GET    /players/{player_id} - Get specific player
+PUT    /players/{player_id} - Update player
+DELETE /players/{player_id} - Delete player
+```
+
+### Admin Endpoints
+
+```
+GET    /admin/teams         - Get all teams with detailed info (admin)
+GET    /admin/teams/{team_id}        - Get team with all players
+GET    /admin/players/{player_id}    - Get player with full details
+```
+
+### Email Endpoints
+
+```
+POST   /send-test-email     - Send test email
+POST   /send-email          - Send custom email
+```
+
+**Full API Documentation:** See `docs/api-reference/` and `docs/INDEX.md`
+
+---
+
+## 📥 Installation & Setup
 
 ### Step 1: Clone Repository
 
 ```bash
 git clone <repository-url>
-cd ICCT26-BACKEND
+cd ICCT26_BACKEND
 ```
 
 ### Step 2: Create Virtual Environment
@@ -162,7 +237,7 @@ cd ICCT26-BACKEND
 python -m venv venv
 .\venv\Scripts\activate
 
-# Linux/macOS
+# macOS/Linux
 python3 -m venv venv
 source venv/bin/activate
 ```
@@ -170,79 +245,34 @@ source venv/bin/activate
 ### Step 3: Install Dependencies
 
 ```bash
+pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-**Dependencies include:**
-- fastapi - Web framework
-- uvicorn - ASGI server
-- sqlalchemy - ORM
-- psycopg2-binary - PostgreSQL driver
-- asyncpg - Async PostgreSQL driver
-- pydantic - Data validation
-- python-dotenv - Environment variables
-- email-validator - Email validation
-
-### Step 4: PostgreSQL Setup
-
-**Complete Guide**: See [`POSTGRESQL_SETUP.md`](./POSTGRESQL_SETUP.md)
-
-Quick setup:
-```bash
-# Windows
-scripts\setup_postgres.bat
-
-# Linux/macOS
-chmod +x scripts/setup_postgres.sh
-./scripts/setup_postgres.sh
-```
-
-### Step 5: Environment Configuration
-
-Copy `.env.example` to `.env` and update:
+### Step 4: Configure Environment Variables
 
 ```bash
+# Copy the example file
 cp .env.example .env
+
+# Edit .env with your configuration
+# See Configuration section below
 ```
 
-Edit `.env`:
-```env
-# Database
-DATABASE_URL=postgresql+asyncpg://postgres:icctpg@localhost/icct26_db
-
-# SMTP (Gmail example)
-SMTP_SERVER=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USERNAME=your-email@gmail.com
-SMTP_PASSWORD=your-app-password
-SMTP_FROM_EMAIL=your-email@gmail.com
-SMTP_FROM_NAME=ICCT26 TEAM
-
-# Server
-PORT=8000
-ENVIRONMENT=development
-```
-
-### Step 6: Initialize Database
+### Step 5: Set Up Database
 
 ```bash
-python init_db.py
+# See Database Setup section below
 ```
 
-Expected output:
-```
-⏳ Creating database tables...
-✅ All tables created successfully!
-```
-
-### Step 7: Start Server
+### Step 6: Run Application
 
 ```bash
-# Production API
+# Development mode with auto-reload
 uvicorn main:app --reload --port 8000
 
-# Simple API (for testing)
-uvicorn simple_main:app --reload --port 8001
+# Production mode
+uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4
 ```
 
 ---
@@ -251,501 +281,560 @@ uvicorn simple_main:app --reload --port 8001
 
 ### Environment Variables
 
-| Variable | Type | Default | Description |
-|----------|------|---------|-------------|
-| `DATABASE_URL` | string | - | PostgreSQL connection URL |
-| `SMTP_SERVER` | string | `smtp.gmail.com` | SMTP server address |
-| `SMTP_PORT` | int | `587` | SMTP port |
-| `SMTP_USERNAME` | string | - | SMTP username/email |
-| `SMTP_PASSWORD` | string | - | SMTP password/app-password |
-| `SMTP_FROM_EMAIL` | string | - | Sender email address |
-| `SMTP_FROM_NAME` | string | `ICCT26 TEAM` | Sender display name |
-| `PORT` | int | `8000` | Server port |
-| `ENVIRONMENT` | string | `development` | Environment (development/production) |
+Create a `.env` file in the project root:
+
+```env
+# Database Configuration
+DATABASE_URL=postgresql+asyncpg://username:password@localhost:5432/icct26_db
+
+# Email Configuration
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=your-email@gmail.com
+SMTP_PASSWORD=your-app-password
+EMAIL_FROM=your-email@gmail.com
+
+# Application Settings
+APP_NAME=ICCT26 Backend API
+DEBUG=True
+SECRET_KEY=your-secret-key-here-keep-it-secure
+ALLOWED_ORIGINS=http://localhost:3000,http://localhost:8000
+
+# Admin Settings
+ADMIN_EMAIL=admin@example.com
+```
+
+### Email Configuration
+
+#### Gmail Setup
+
+1. Enable 2-Factor Authentication on your Gmail account
+2. Generate an App Password:
+   - Go to https://myaccount.google.com/apppasswords
+   - Select Mail and Windows Computer
+   - Copy the generated password
+3. Use the password in `SMTP_PASSWORD`
+
+#### Alternative Email Providers
+
+- **SendGrid:** Update `SMTP_HOST` to `smtp.sendgrid.net`, `SMTP_PORT` to `587`
+- **Mailgun:** Update `SMTP_HOST` to `smtp.mailgun.org`, `SMTP_PORT` to `587`
+- **AWS SES:** Update `SMTP_HOST` to `email-smtp.region.amazonaws.com`
 
 ### Database Configuration
 
-**File**: `database.py`
-
-```python
-DATABASE_URL = "postgresql+asyncpg://postgres:icctpg@localhost:5432/icct26_db"
-engine = create_async_engine(DATABASE_URL)
-async_session = sessionmaker(engine, class_=AsyncSession)
-```
-
-### SMTP Configuration
-
-**For Gmail:**
-1. Enable 2-factor authentication
-2. Generate App Password: https://myaccount.google.com/apppasswords
-3. Use App Password in `.env` (not your main password)
-
-**Example:**
 ```env
-SMTP_SERVER=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USERNAME=sanjaynesan007@gmail.com
-SMTP_PASSWORD=capblszgvdjcrwyd
+# PostgreSQL Connection String Format
+DATABASE_URL=postgresql+asyncpg://[user]:[password]@[host]:[port]/[database]
+
+# Example for local development
+DATABASE_URL=postgresql+asyncpg://postgres:password@localhost:5432/icct26_db
+
+# Example for Render (production)
+DATABASE_URL=postgresql+asyncpg://user:password@dpg-xxxxx-xxxx.oregon-postgres.render.com:5432/icct26_db
 ```
 
 ---
 
-## 📊 Database Schema
+## ▶️ Running the Application
 
-### team_registrations
-Main registration table
-
-```sql
-CREATE TABLE team_registrations (
-    id SERIAL PRIMARY KEY,
-    team_id VARCHAR(50) UNIQUE NOT NULL,
-    church_name VARCHAR(200),
-    team_name VARCHAR(100),
-    pastor_letter TEXT,
-    payment_receipt TEXT,
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
-);
-```
-
-### captains
-Team captain information
-
-```sql
-CREATE TABLE captains (
-    id SERIAL PRIMARY KEY,
-    registration_id INTEGER REFERENCES team_registrations(id),
-    name VARCHAR(100),
-    phone VARCHAR(15),
-    whatsapp VARCHAR(10),
-    email VARCHAR(255)
-);
-```
-
-### vice_captains
-Vice-captain information
-
-```sql
-CREATE TABLE vice_captains (
-    id SERIAL PRIMARY KEY,
-    registration_id INTEGER REFERENCES team_registrations(id),
-    name VARCHAR(100),
-    phone VARCHAR(15),
-    whatsapp VARCHAR(10),
-    email VARCHAR(255)
-);
-```
-
-### players
-Player roster (11-15 per team)
-
-```sql
-CREATE TABLE players (
-    id SERIAL PRIMARY KEY,
-    registration_id INTEGER REFERENCES team_registrations(id),
-    name VARCHAR(100),
-    age INTEGER,
-    phone VARCHAR(15),
-    role VARCHAR(20),
-    aadhar_file TEXT,
-    subscription_file TEXT
-);
-```
-
-### teams (Simple API Only)
-Simple teams table for basic testing
-
-```sql
-CREATE TABLE teams (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(100),
-    captain VARCHAR(100),
-    registered_on TIMESTAMP DEFAULT NOW()
-);
-```
-
----
-
-## 🔌 API Endpoints
-
-### Main API (Production)
-
-#### POST `/register/team`
-Register a cricket team with player details
-
-**Content-Type**: `application/json`
-
-**Request Body:**
-```json
-{
-  "churchName": "CSI St. Peter's Church",
-  "teamName": "Warriors",
-  "pastorLetter": "data:application/pdf;base64,JVBERi0xLjQ...",
-  "captain": {
-    "name": "John Doe",
-    "phone": "+919876543210",
-    "whatsapp": "9876543210",
-    "email": "captain@example.com"
-  },
-  "viceCaptain": {
-    "name": "Jane Smith",
-    "phone": "+919876543211",
-    "whatsapp": "9876543211",
-    "email": "vice@example.com"
-  },
-  "players": [
-    {
-      "name": "Player One",
-      "age": 25,
-      "phone": "+919876543212",
-      "role": "Batsman",
-      "aadharFile": "data:application/pdf;base64,JVBERi0xLjQ...",
-      "subscriptionFile": "data:application/pdf;base64,JVBERi0xLjQ..."
-    },
-    {
-      "name": "Player Two",
-      "age": 26,
-      "phone": "+919876543213",
-      "role": "Bowler",
-      "aadharFile": null,
-      "subscriptionFile": null
-    }
-  ],
-  "paymentReceipt": "data:application/pdf;base64,JVBERi0xLjQ..."
-}
-```
-
-**Response (Success 200):**
-```json
-{
-  "success": true,
-  "message": "Team registration successful",
-  "data": {
-    "team_id": "ICCT26-20251105143934",
-    "team_name": "Warriors",
-    "captain_name": "John Doe",
-    "players_count": 11,
-    "registered_at": "2025-11-05T14:39:34.123456",
-    "email_sent": true,
-    "database_saved": true
-  }
-}
-```
-
-**Response (Validation Error 422):**
-```json
-{
-  "detail": [
-    {
-      "loc": ["body", "players"],
-      "msg": "Team must have 11-15 players",
-      "type": "value_error"
-    }
-  ]
-}
-```
-
-### Simple API (Testing)
-
-#### GET `/`
-Health check
-
-**Response:**
-```json
-{
-  "message": "ICCT26 Backend connected to PostgreSQL successfully"
-}
-```
-
-#### POST `/register/team?name=Warriors&captain=John+Doe`
-Simple team registration
-
-**Response:**
-```json
-{
-  "id": 1,
-  "name": "Warriors",
-  "captain": "John Doe"
-}
-```
-
----
-
-## 🧪 Testing
-
-### Swagger UI (Interactive Documentation)
-
-**Main API**: http://localhost:8000/docs
-**Simple API**: http://localhost:8001/docs
-
-Interactive API testing with request/response examples.
-
-### Automated Test Scripts
+### Development Mode
 
 ```bash
-# Test main API with full registration
-python scripts/test_registration_simple.py
+# With auto-reload
+uvicorn main:app --reload --port 8000
 
-# Test simple API
-python scripts/test_simple_api.py
+# Output:
+# Uvicorn running on http://127.0.0.1:8000
+# Press CTRL+C to quit
 ```
 
-### Manual Testing with curl
+### Production Mode
 
 ```bash
-# Health check
-curl http://localhost:8000/
+# With multiple workers
+uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4
 
-# Register team (simple API)
-curl -X POST "http://localhost:8001/register/team?name=Warriors&captain=John%20Doe"
+# Or with gunicorn (recommended)
+gunicorn main:app -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
+```
 
-# Register team with full details (main API)
-curl -X POST "http://localhost:8000/register/team" \
+### Access Points
+
+| URL | Purpose |
+|-----|---------|
+| `http://localhost:8000` | API Root |
+| `http://localhost:8000/docs` | Swagger UI (Interactive API Docs) |
+| `http://localhost:8000/redoc` | ReDoc (API Documentation) |
+| `http://localhost:8000/openapi.json` | OpenAPI Schema |
+
+---
+
+## 🔐 Admin Panel
+
+The Admin Panel provides comprehensive management endpoints:
+
+### Admin Features
+
+✅ **Team Management** - View all teams with complete details  
+✅ **Player Management** - View player information across all teams  
+✅ **Data Export** - Get structured data for reporting  
+✅ **Performance** - Optimized queries with minimal database hits  
+
+### Admin Endpoints
+
+```bash
+# Get all teams (with player count, coach info, etc.)
+GET /admin/teams
+
+# Get specific team with all players
+GET /admin/teams/{team_id}
+
+# Get player full details
+GET /admin/players/{player_id}
+```
+
+### Usage Example
+
+```bash
+curl -X GET "http://localhost:8000/admin/teams"
+
+curl -X GET "http://localhost:8000/admin/teams/1"
+
+curl -X GET "http://localhost:8000/admin/players/5"
+```
+
+**Full Admin Documentation:** See `docs/admin-panel/ADMIN_PANEL_ENDPOINTS.md`
+
+---
+
+## 📧 Email Notifications
+
+### Test Email Endpoint
+
+```bash
+# Send a test email
+curl -X POST "http://localhost:8000/send-test-email" \
   -H "Content-Type: application/json" \
-  -d @registration_data.json
+  -d '{
+    "recipient_email": "test@example.com"
+  }'
 ```
 
-### Database Verification
+### Send Custom Email
+
+```bash
+curl -X POST "http://localhost:8000/send-email" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "to": "recipient@example.com",
+    "subject": "Test Subject",
+    "body": "Email content here",
+    "html_body": "<h1>HTML Content</h1>"
+  }'
+```
+
+### Email Features
+
+✅ **SMTP Integration** - Works with Gmail, SendGrid, Mailgun, AWS SES  
+✅ **HTML Templates** - Support for rich HTML emails  
+✅ **Async Sending** - Non-blocking email dispatch  
+✅ **Error Handling** - Comprehensive error messages  
+
+**Full Email Documentation:** See test_email.py for examples
+
+---
+
+## 🗄️ Database Setup
+
+### PostgreSQL Installation
+
+**Windows:**
+```bash
+# Download from https://www.postgresql.org/download/windows/
+# Run installer and follow prompts
+# Remember the password you set for 'postgres' user
+```
+
+**macOS:**
+```bash
+# Using Homebrew
+brew install postgresql
+brew services start postgresql
+```
+
+**Linux (Ubuntu/Debian):**
+```bash
+sudo apt-get install postgresql postgresql-contrib
+sudo service postgresql start
+```
+
+### Create Database
 
 ```bash
 # Connect to PostgreSQL
-psql -U postgres -d icct26_db
+psql -U postgres
 
-# View teams
-SELECT * FROM team_registrations;
+# Create database
+CREATE DATABASE icct26_db;
 
-# View captains
-SELECT c.name, c.email, t.team_name 
-FROM captains c 
-JOIN team_registrations t ON c.registration_id = t.id;
+# Create user (optional, for security)
+CREATE USER icct26_user WITH PASSWORD 'secure_password';
+ALTER ROLE icct26_user SET client_encoding TO 'utf8';
+ALTER ROLE icct26_user SET default_transaction_isolation TO 'read committed';
+GRANT ALL PRIVILEGES ON DATABASE icct26_db TO icct26_user;
 
-# View players count
-SELECT t.team_name, COUNT(p.id) as player_count
-FROM team_registrations t
-LEFT JOIN players p ON t.id = p.registration_id
-GROUP BY t.team_name;
-
-# Count registrations
-SELECT COUNT(*) as total_registrations FROM team_registrations;
+# Exit psql
+\q
 ```
 
----
+### Initialize Database Connection
 
-## 🐛 Troubleshooting
-
-### Database Connection Issues
-
-**Error**: `password authentication failed for user "postgres"`
-
-**Solution**:
-```bash
-# Reset PostgreSQL password
-psql -U postgres -c "ALTER USER postgres PASSWORD 'icctpg';"
-
-# Update .env with correct password
-DATABASE_URL=postgresql+asyncpg://postgres:icctpg@localhost/icct26_db
-```
-
-### Database Does Not Exist
-
-**Error**: `database "icct26_db" does not exist`
-
-**Solution**:
-```bash
-# Initialize database
-python init_db.py
-
-# Or manually create
-createdb -U postgres icct26_db
-```
-
-### SMTP Connection Failed
-
-**Error**: `smtplib.SMTPAuthenticationError: (535, b'5.7.8 Username and password not accepted')`
-
-**Solution**:
-1. Verify email and password in `.env`
-2. For Gmail, use App Password (not main password)
-3. Ensure 2-factor authentication is enabled
-4. Check SMTP settings are correct
-
-### Port Already in Use
-
-**Error**: `Address already in use: ('0.0.0.0', 8000)`
-
-**Solution**:
-```bash
-# Use different port
-uvicorn main:app --port 8001
-
-# Or kill process using port
-# Windows
-netstat -ano | findstr :8000
-taskkill /PID <PID> /F
-
-# Linux/macOS
-lsof -i :8000
-kill -9 <PID>
-```
-
-### Module Not Found
-
-**Error**: `ModuleNotFoundError: No module named 'fastapi'`
-
-**Solution**:
-```bash
-# Activate virtual environment
-.\venv\Scripts\activate  # Windows
-source venv/bin/activate  # Linux/macOS
-
-# Install dependencies
-pip install -r requirements.txt
-```
-
----
-
-## 🚀 Production Deployment
-
-### Environment Setup
+Update `.env` with your database credentials:
 
 ```env
-# Production .env
-DATABASE_URL=postgresql+asyncpg://prod_user:strong_password@prod-db-server/icct26_db
-SMTP_SERVER=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USERNAME=team@icct26.com
-SMTP_PASSWORD=secure_app_password
-SMTP_FROM_EMAIL=team@icct26.com
-SMTP_FROM_NAME=ICCT26 Tournament Team
-
-PORT=8000
-ENVIRONMENT=production
+DATABASE_URL=postgresql+asyncpg://icct26_user:secure_password@localhost:5432/icct26_db
 ```
 
-### Docker Deployment
+### Verify Connection
 
-**Dockerfile:**
-```dockerfile
-FROM python:3.11-slim
-
-WORKDIR /app
-
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    postgresql-client \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy requirements
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy application
-COPY . .
-
-# Run database initialization
-RUN python init_db.py
-
-# Expose port
-EXPOSE 8000
-
-# Run application
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
-```
-
-**Build and Run:**
 ```bash
-docker build -t icct26-backend .
-docker run -p 8000:8000 --env-file .env icct26-backend
+# Run the application, it will test the connection
+uvicorn main:app --reload
+
+# Check for "Connected to PostgreSQL" message in console
 ```
 
-### PostgreSQL Production Setup
+---
 
-```sql
--- Create dedicated user
-CREATE USER icct26_user WITH PASSWORD 'secure_password';
+## 🚀 Deployment
 
--- Create database
-CREATE DATABASE icct26_db OWNER icct26_user;
+### Deployment Platforms
 
--- Grant permissions
-GRANT ALL PRIVILEGES ON DATABASE icct26_db TO icct26_user;
-\c icct26_db
-GRANT ALL ON SCHEMA public TO icct26_user;
-```
+The application can be deployed to:
 
-### Security Checklist
+- **Render** (Recommended for PostgreSQL + FastAPI)
+- **Railway**
+- **Fly.io**
+- **Heroku**
+- **AWS EC2** / **Lightsail**
+- **DigitalOcean**
 
-- [ ] Use strong database passwords (12+ characters, mixed case, numbers, symbols)
-- [ ] Enable HTTPS/SSL in production
-- [ ] Use environment variables for all secrets
-- [ ] Never commit `.env` to version control
-- [ ] Implement rate limiting on API endpoints
-- [ ] Use Gmail App Passwords (not main password)
-- [ ] Enable database backups
-- [ ] Monitor application logs
-- [ ] Set up firewall rules
-- [ ] Use VPN for database connections
+### Quick Deployment to Render
+
+1. **Push to GitHub** - Ensure code is in a GitHub repository
+2. **Connect Render** - Go to https://render.com and connect your GitHub account
+3. **Create Web Service** - Select this repository
+4. **Configure:**
+   - Build Command: `pip install -r requirements.txt`
+   - Start Command: `uvicorn main:app --host 0.0.0.0 --port $PORT`
+   - Add environment variables from `.env`
+5. **Add PostgreSQL Database** - Create PostgreSQL instance on Render
+6. **Update DATABASE_URL** - Use Render database URL
+
+**Full Deployment Guide:** See `docs/deployment/PRODUCTION_DEPLOYMENT_GUIDE.md`
 
 ---
 
 ## 📚 Documentation
 
-- **PostgreSQL Setup Guide**: [`POSTGRESQL_SETUP.md`](./POSTGRESQL_SETUP.md)
-- **Simple API Documentation**: [`SIMPLE_API_README.md`](./SIMPLE_API_README.md)
-- **Swagger UI**: http://localhost:8000/docs
-- **ReDoc**: http://localhost:8000/redoc
-- **FastAPI Docs**: https://fastapi.tiangolo.com/
-- **SQLAlchemy Docs**: https://docs.sqlalchemy.org/
-- **PostgreSQL Docs**: https://www.postgresql.org/docs/
+Complete documentation is organized in the `docs/` folder:
+
+### Documentation Structure
+
+```
+docs/
+├── INDEX.md                           # Master documentation index
+├── admin-panel/                       # Admin Panel (8 files)
+│   ├── ADMIN_PANEL_ENDPOINTS.md
+│   ├── ADMIN_TESTING_GUIDE.md
+│   └── ...
+├── api-reference/                     # API Reference (2 files)
+│   └── SIMPLE_API_README.md
+├── deployment/                        # Deployment Guides (4 files)
+│   ├── PRODUCTION_DEPLOYMENT_GUIDE.md
+│   ├── RENDER_SETUP_SUMMARY.md
+│   └── ...
+├── frontend/                          # Frontend Integration (6 files)
+│   ├── FRONTEND_INTEGRATION.md
+│   ├── INTEGRATION_CHECKLIST.md
+│   └── ...
+├── security/                          # Security (3 files)
+│   ├── SECURITY.md
+│   └── ...
+└── setup/                             # Setup Guides (3 files)
+    ├── SETUP_GUIDE.md
+    └── ...
+```
+
+### Quick Links
+
+| Document | Purpose |
+|----------|---------|
+| `docs/INDEX.md` | **START HERE** - Master index of all documentation |
+| `docs/admin-panel/ADMIN_PANEL_ENDPOINTS.md` | Admin API endpoints reference |
+| `docs/deployment/PRODUCTION_DEPLOYMENT_GUIDE.md` | Production deployment steps |
+| `docs/frontend/FRONTEND_INTEGRATION.md` | Frontend integration guide |
+| `docs/security/SECURITY.md` | Security guidelines and best practices |
+| `docs/setup/SETUP_GUIDE.md` | Complete setup instructions |
+
+**Access Documentation:** Open `docs/INDEX.md` in your editor
+
+---
+
+## 🧪 Testing
+
+### Run Test Email
+
+```bash
+# Using Python directly
+python test_email.py
+
+# Expected output:
+# Testing email functionality...
+# Email sent successfully!
+```
+
+### API Testing
+
+```bash
+# Test health check
+curl -X GET "http://localhost:8000/auth/health"
+
+# Test create team
+curl -X POST "http://localhost:8000/teams" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Team A","description":"Test team"}'
+
+# Test get teams
+curl -X GET "http://localhost:8000/teams"
+```
+
+### Automated Testing
+
+Use the Swagger UI for interactive testing:
+1. Go to `http://localhost:8000/docs`
+2. Click on an endpoint
+3. Click "Try it out"
+4. Enter parameters and click "Execute"
+
+---
+
+## 🔒 Security
+
+### Key Security Features
+
+✅ **Environment Variables** - Sensitive data not hardcoded  
+✅ **Type Validation** - Pydantic models validate all inputs  
+✅ **Error Handling** - No sensitive data in error messages  
+✅ **CORS Configuration** - Restrict cross-origin requests  
+✅ **Async Operations** - Protection against blocking attacks  
+
+### Security Best Practices
+
+1. **Never commit `.env` file** - Add to `.gitignore`
+2. **Use strong passwords** - For database and email
+3. **Rotate secrets** - Especially `SECRET_KEY`
+4. **Keep dependencies updated** - Run `pip install --upgrade -r requirements.txt`
+5. **Use HTTPS in production** - Configure SSL certificates
+6. **Monitor logs** - Check for suspicious activity
+
+**Full Security Guide:** See `docs/security/SECURITY.md`
+
+---
+
+## 📦 Dependencies
+
+### Core Dependencies
+
+```
+fastapi==0.104.1          # Web framework
+uvicorn==0.24.0           # ASGI server
+sqlalchemy==2.0.23        # ORM
+asyncpg==0.29.0           # PostgreSQL async driver
+pydantic==2.5.0           # Data validation
+python-dotenv==1.0.0      # Environment variables
+aiosmtplib==3.0.0         # Async SMTP
+```
+
+### Installation
+
+```bash
+pip install -r requirements.txt
+```
+
+### Update Dependencies
+
+```bash
+pip install --upgrade -r requirements.txt
+```
 
 ---
 
 ## 🤝 Contributing
 
-1. Create a feature branch: `git checkout -b feature/your-feature`
-2. Make changes and commit: `git commit -m "Add feature"`
-3. Push to branch: `git push origin feature/your-feature`
-4. Submit a Pull Request
+### Contribution Workflow
+
+1. **Create a branch** - `git checkout -b feature/your-feature`
+2. **Make changes** - Implement your feature
+3. **Test thoroughly** - Run tests and verify functionality
+4. **Commit changes** - `git commit -m "Add feature"`
+5. **Push to GitHub** - `git push origin feature/your-feature`
+6. **Create Pull Request** - Describe your changes
+7. **Code Review** - Wait for review and feedback
+8. **Merge** - Once approved, merge to main
+
+### Code Standards
+
+- Follow PEP 8 style guide
+- Add type hints to all functions
+- Write docstrings for complex functions
+- Test new features thoroughly
+- Update documentation
 
 ---
 
-## 📞 Support
+## ❓ FAQ
 
-For issues or questions:
-1. Check the [Troubleshooting](#troubleshooting) section
-2. Review [`POSTGRESQL_SETUP.md`](./POSTGRESQL_SETUP.md)
-3. Check API documentation at `/docs`
-4. Review test scripts for usage examples
-5. Open an issue on GitHub
+### Q: How do I reset the database?
+**A:** Delete all records:
+```sql
+DELETE FROM players;
+DELETE FROM teams;
+```
+
+### Q: How do I backup my database?
+**A:** Use pg_dump:
+```bash
+pg_dump -U postgres icct26_db > backup.sql
+```
+
+### Q: How do I restore from backup?
+**A:** Use psql:
+```bash
+psql -U postgres icct26_db < backup.sql
+```
+
+### Q: How do I check if the API is running?
+**A:** Test the health endpoint:
+```bash
+curl -X GET "http://localhost:8000/auth/health"
+```
+
+### Q: How do I debug API errors?
+**A:** Check console output and error messages in responses. Use Swagger UI for detailed error info.
+
+### Q: How do I enable CORS for a frontend?
+**A:** Update `.env` and add your frontend URL to `ALLOWED_ORIGINS`:
+```env
+ALLOWED_ORIGINS=http://localhost:3000,http://localhost:8000
+```
 
 ---
 
-## 📄 License
+## 🆘 Support
 
-ICCT26 Cricket Tournament - CSI St. Peter's Church, Coimbatore
+### Getting Help
+
+1. **Check Documentation** - See `docs/INDEX.md`
+2. **Read Error Messages** - They often indicate the solution
+3. **Check API Docs** - Visit `http://localhost:8000/docs`
+4. **Review Examples** - Check test_email.py and documentation files
+
+### Common Issues
+
+| Issue | Solution |
+|-------|----------|
+| **Database Connection Error** | Check DATABASE_URL in .env and PostgreSQL is running |
+| **Email Not Sending** | Verify SMTP settings, check Gmail app password |
+| **Port Already in Use** | Change port: `uvicorn main:app --port 8001` |
+| **Virtual Environment Issues** | Delete venv and recreate: `python -m venv venv` |
+
+### Troubleshooting
+
+**Application won't start:**
+```bash
+# Check if dependencies are installed
+pip list | findstr fastapi
+
+# Reinstall if needed
+pip install -r requirements.txt
+
+# Check Python version
+python --version  # Should be 3.8 or higher
+```
+
+**Database connection fails:**
+```bash
+# Test PostgreSQL connection
+psql -U postgres -d icct26_db -c "SELECT 1"
+
+# Verify DATABASE_URL format in .env
+```
+
+**Email not working:**
+```bash
+# Run test email script
+python test_email.py
+
+# Check SMTP settings in .env
+```
 
 ---
 
-## ✅ Project Status
+## 📝 License
 
-- ✅ FastAPI framework setup
-- ✅ PostgreSQL integration (async)
-- ✅ SQLAlchemy ORM models
-- ✅ Pydantic data validation
-- ✅ SMTP email notifications
-- ✅ REST API endpoints
-- ✅ Test scripts and automation
-- ✅ Comprehensive documentation
-- ✅ Error handling and logging
-- ✅ Database schema and migrations
-- ✅ Production-ready configuration
-- ✅ Docker support
+This project is proprietary and confidential. Unauthorized copying or distribution is prohibited.
 
 ---
 
-**Last Updated**: November 5, 2025
-**Version**: 1.0.0
-**Status**: ✅ Production Ready
-**Python**: 3.11+
-**PostgreSQL**: 17+
-**FastAPI**: 0.104+
+## 📧 Contact
+
+For questions or support, contact the development team.
+
+---
+
+## 🎯 Roadmap
+
+### Planned Features
+
+- [ ] Authentication and Authorization (JWT)
+- [ ] Rate limiting
+- [ ] Caching layer (Redis)
+- [ ] Database migrations (Alembic)
+- [ ] Advanced filtering and search
+- [ ] Data export to CSV/Excel
+- [ ] Real-time notifications (WebSocket)
+- [ ] Mobile API endpoints
+- [ ] Analytics dashboard
+
+---
+
+## 📊 Project Status
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| **API Core** | ✅ Ready | FastAPI application running |
+| **Database** | ✅ Ready | PostgreSQL configured |
+| **Admin Panel** | ✅ Ready | 3 endpoints implemented |
+| **Email System** | ✅ Ready | SMTP integration working |
+| **Documentation** | ✅ Complete | 26 comprehensive docs |
+| **Deployment** | ✅ Ready | Render ready |
+
+---
+
+## 🙏 Acknowledgments
+
+Built with:
+- [FastAPI](https://fastapi.tiangolo.com/)
+- [SQLAlchemy](https://www.sqlalchemy.org/)
+- [PostgreSQL](https://www.postgresql.org/)
+- [Pydantic](https://docs.pydantic.dev/)
+
+---
+
+**Last Updated:** November 2025  
+**Version:** 1.0.0  
+**Maintainer:** Development Team
+
+For detailed documentation, see `docs/INDEX.md` 📚
