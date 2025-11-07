@@ -22,12 +22,12 @@ WHAT'S READY
 ✅ PostgreSQL Database
    - Name: icct26_db
    - User: postgres
-   - Password: icctpg
+   - Password: [Set in .env file]
    - Tables: 5 (team_registrations, captains, vice_captains, players, teams)
 
 ✅ Email Service
    - Provider: Gmail SMTP
-   - Email: sanjaynesan007@gmail.com
+   - Email: [Set in .env file]
    - Port: 587
    - Status: Configured in .env
 

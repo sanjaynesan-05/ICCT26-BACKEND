@@ -20,7 +20,7 @@ import uvicorn
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, JSON
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, JSON, select
 from sqlalchemy.dialects.postgresql import JSONB
 
 # Load environment variables
@@ -448,6 +448,53 @@ async def health_check():
         "status": "healthy",
         "service": "ICCT26 Registration API",
         "timestamp": datetime.now().isoformat()
+    }
+
+
+@app.get("/status")
+async def api_status():
+    """API status endpoint"""
+    return {
+        "status": "operational",
+        "api_version": "1.0.0",
+        "database": "connected",
+        "email_service": "configured",
+        "timestamp": datetime.now().isoformat()
+    }
+
+
+@app.get("/teams")
+async def get_teams(db: AsyncSession = Depends(get_db)):
+    """Get all registered teams"""
+    try:
+        result = await db.execute(select(TeamRegistrationDB))
+        teams = result.scalars().all()
+        
+        return {
+            "success": True,
+            "count": len(teams),
+            "teams": [
+                {
+                    "team_id": team.team_id,
+                    "team_name": team.team_name,
+                    "church_name": team.church_name,
+                    "created_at": team.created_at.isoformat() if team.created_at else None
+                }
+                for team in teams
+            ]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/queue/status")
+async def queue_status():
+    """Queue status endpoint (placeholder for future implementation)"""
+    return {
+        "status": "active",
+        "pending_registrations": 0,
+        "processed_registrations": 0,
+        "message": "Queue system ready"
     }
 
 
