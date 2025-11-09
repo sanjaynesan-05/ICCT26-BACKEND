@@ -13,8 +13,14 @@ DATABASE_URL = os.getenv(
 )
 
 # Replace asyncpg with psycopg2 for synchronous operations
-if 'postgresql+asyncpg://' in DATABASE_URL:
+# Only convert if it contains asyncpg
+if DATABASE_URL and 'postgresql+asyncpg://' in DATABASE_URL:
     DATABASE_URL = DATABASE_URL.replace('postgresql+asyncpg://', 'postgresql://')
+elif DATABASE_URL and DATABASE_URL.startswith('postgres://'):
+    # Handle postgres:// URLs (common on some platforms)
+    DATABASE_URL = DATABASE_URL.replace('postgres://', 'postgresql://')
+
+print(f"Using DATABASE_URL: {DATABASE_URL[:50]}...")  # Debug log (first 50 chars)
 
 # Create SQLAlchemy engine
 engine = create_engine(DATABASE_URL)
