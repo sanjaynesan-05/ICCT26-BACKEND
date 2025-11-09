@@ -103,10 +103,10 @@ class PlayerDetails(BaseModel):
     """Player information schema"""
     name: str = Field(..., description="Player full name", min_length=1, max_length=100)
     age: int = Field(..., description="Player age", ge=15, le=60)
-    phone: str = Field(..., description="Player phone number", min_length=10, max_length=15)
+    phone: str = Field(..., description="Player phone number in E.164 format", min_length=10, max_length=20)
     role: str = Field(..., description="Player role (Batsman/Bowler/All-Rounder/Wicket Keeper)")
-    aadharFile: Optional[str] = Field(None, description="Aadhar file (base64)")
-    subscriptionFile: Optional[str] = Field(None, description="Subscription file (base64)")
+    aadharFile: Optional[str] = Field(None, description="Aadhar file (base64 image)")
+    subscriptionFile: Optional[str] = Field(None, description="Subscription file (base64 image)")
 
     @validator('role')
     def validate_role(cls, v):
@@ -119,24 +119,24 @@ class PlayerDetails(BaseModel):
 class CaptainInfo(BaseModel):
     """Captain information schema"""
     name: str = Field(..., description="Captain full name", min_length=1, max_length=100)
-    phone: str = Field(..., description="Captain phone number", min_length=10, max_length=15)
-    whatsapp: str = Field(..., description="Captain WhatsApp number", min_length=10, max_length=10)
+    phone: str = Field(..., description="Captain phone number in E.164 format", min_length=10, max_length=20)
+    whatsapp: str = Field(..., description="Captain WhatsApp number (can be with or without +91)", min_length=10, max_length=20)
     email: EmailStr = Field(..., description="Captain email address")
 
 
 class ViceCaptainInfo(BaseModel):
     """Vice-Captain information schema"""
     name: str = Field(..., description="Vice-Captain full name", min_length=1, max_length=100)
-    phone: str = Field(..., description="Vice-Captain phone number", min_length=10, max_length=15)
-    whatsapp: str = Field(..., description="Vice-Captain WhatsApp number", min_length=10, max_length=10)
+    phone: str = Field(..., description="Vice-Captain phone number in E.164 format", min_length=10, max_length=20)
+    whatsapp: str = Field(..., description="Vice-Captain WhatsApp number (can be with or without +91)", min_length=10, max_length=20)
     email: EmailStr = Field(..., description="Vice-Captain email address")
 
 
 class TeamRegistration(BaseModel):
-    """Team registration schema"""
+    """Team registration schema - matches frontend payload exactly"""
     churchName: str = Field(..., description="Church name", min_length=1, max_length=200)
     teamName: str = Field(..., description="Team name (unique)", min_length=1, max_length=100)
-    pastorLetter: Optional[str] = Field(None, description="Pastor letter (base64)")
+    pastorLetter: Optional[str] = Field(None, description="Pastor letter (base64 image/PDF)")
     
     captain: CaptainInfo = Field(..., description="Captain details")
     viceCaptain: ViceCaptainInfo = Field(..., description="Vice-Captain details")
@@ -148,7 +148,7 @@ class TeamRegistration(BaseModel):
         max_items=15
     )
     
-    paymentReceipt: Optional[str] = Field(None, description="Payment receipt (base64)")
+    paymentReceipt: Optional[str] = Field(None, description="Payment receipt (base64 image/PDF)")
 
     @validator('players')
     def validate_player_count(cls, v):
@@ -813,13 +813,64 @@ def admin_get_player_details(player_id: int, db: Session = Depends(get_db)):
 
 @app.post("/register/team")
 async def register_team(registration: TeamRegistration, db: AsyncSession = Depends(get_db_async)):
-    """Register a team for the tournament"""
+    """
+    Register a team for the ICCT26 Cricket Tournament.
+    
+    Accepts the following JSON payload:
+    {
+      "churchName": "Church Name",
+      "teamName": "Team Name",
+      "pastorLetter": "data:image/jpeg;base64,...",  # Optional
+      "captain": {
+        "name": "Captain Name",
+        "phone": "+919876543210",
+        "whatsapp": "919876543210",
+        "email": "captain@example.com"
+      },
+      "viceCaptain": {
+        "name": "Vice Captain Name",
+        "phone": "+919876543211",
+        "whatsapp": "919876543211",
+        "email": "vicecaptain@example.com"
+      },
+      "players": [
+        {
+          "name": "Player Name",
+          "age": 25,
+          "phone": "+919800000001",
+          "role": "Batsman|Bowler|All-Rounder|Wicket Keeper",
+          "aadharFile": "data:image/jpeg;base64,...",  # Optional
+          "subscriptionFile": "data:image/jpeg;base64,..."  # Optional
+        },
+        // ... 10-14 more players (11-15 total required)
+      ],
+      "paymentReceipt": "data:image/jpeg;base64,..."  # Optional
+    }
+    
+    Returns:
+    {
+      "success": true,
+      "message": "Team registration successful",
+      "data": {
+        "team_id": "ICCT26-20251109093800",
+        "team_name": "Team Name",
+        "captain_name": "Captain Name",
+        "players_count": 11,
+        "registered_at": "2025-11-09T09:38:00.123456",
+        "email_sent": true,
+        "database_saved": true
+      }
+    }
+    """
     try:
         # Validate input
         if len(registration.players) < 11 or len(registration.players) > 15:
             raise HTTPException(
                 status_code=422,
-                detail="Team must have 11-15 players"
+                detail={
+                    "success": False,
+                    "message": f"Invalid player count. Expected 11-15 players, got {len(registration.players)}"
+                }
             )
 
         # Generate team ID
@@ -830,6 +881,7 @@ async def register_team(registration: TeamRegistration, db: AsyncSession = Depen
         print(f"   Team ID: {team_id}")
         print(f"   Church: {registration.churchName}")
         print(f"   Captain: {registration.captain.name}")
+        print(f"   Vice-Captain: {registration.viceCaptain.name}")
         print(f"   Players: {len(registration.players)}")
         print(f"{'='*60}")
 
@@ -856,7 +908,9 @@ async def register_team(registration: TeamRegistration, db: AsyncSession = Depen
             "data": {
                 "team_id": team_id,
                 "team_name": registration.teamName,
+                "church_name": registration.churchName,
                 "captain_name": registration.captain.name,
+                "vice_captain_name": registration.viceCaptain.name,
                 "players_count": len(registration.players),
                 "registered_at": datetime.now().isoformat(),
                 "email_sent": email_result.get("success", False),
@@ -866,9 +920,24 @@ async def register_team(registration: TeamRegistration, db: AsyncSession = Depen
         
     except HTTPException:
         raise
+    except ValueError as e:
+        print(f"❌ Validation error: {str(e)}")
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "success": False,
+                "message": f"Validation error: {str(e)}"
+            }
+        )
     except Exception as e:
         print(f"❌ Registration error: {str(e)}")
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "success": False,
+                "message": f"Registration failed: {str(e)}"
+            }
+        )
 
 
 # ============================================================
