@@ -1,6 +1,7 @@
 """
 ICCT26 Cricket Tournament Registration API
 Clean implementation with SMTP email and database schema
+Fixed admin endpoints for production deployment
 """
 
 from fastapi import FastAPI, HTTPException, Depends
