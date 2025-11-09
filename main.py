@@ -19,16 +19,15 @@ import uvicorn
 
 # NEW: Import synchronous database and models
 from sqlalchemy.orm import Session
-from sqlalchemy import text
-from database import get_db, engine, Base
+from sqlalchemy import text, Column, Integer, String, Text, DateTime, ForeignKey, JSON, select, func
+from sqlalchemy.dialects.postgresql import JSONB
+from database import get_db, engine
 from models import Team, Player
 
 # Database imports (keep for old endpoints)
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker as async_sessionmaker
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, JSON, select, func
-from sqlalchemy.dialects.postgresql import JSONB
 
 # Load environment variables
 load_dotenv()
@@ -44,8 +43,8 @@ async_engine = create_async_engine(DATABASE_URL_ASYNC, echo=False)
 AsyncSessionLocal = async_sessionmaker(async_engine, class_=AsyncSession, expire_on_commit=False)
 AsyncBase = declarative_base()
 
-# Define async database models (for old endpoints only)
-class TeamRegistrationDB(AsyncBase):
+# Define async database models (for old async endpoints only)
+class TeamRegistrationAsyncDB(AsyncBase):
     __tablename__ = "team_registrations"
     id = Column(Integer, primary_key=True, index=True)
     team_id = Column(String(50), unique=True, index=True)
@@ -56,7 +55,7 @@ class TeamRegistrationDB(AsyncBase):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-class CaptainDB(AsyncBase):
+class CaptainAsyncDB(AsyncBase):
     __tablename__ = "captains"
     id = Column(Integer, primary_key=True, index=True)
     registration_id = Column(Integer, ForeignKey("team_registrations.id"))
@@ -65,7 +64,7 @@ class CaptainDB(AsyncBase):
     whatsapp = Column(String(10))
     email = Column(String(255))
 
-class ViceCaptainDB(AsyncBase):
+class ViceCaptainAsyncDB(AsyncBase):
     __tablename__ = "vice_captains"
     id = Column(Integer, primary_key=True, index=True)
     registration_id = Column(Integer, ForeignKey("team_registrations.id"))
@@ -74,7 +73,7 @@ class ViceCaptainDB(AsyncBase):
     whatsapp = Column(String(10))
     email = Column(String(255))
 
-class PlayerDB(AsyncBase):
+class PlayerAsyncDB(AsyncBase):
     __tablename__ = "players"
     id = Column(Integer, primary_key=True, index=True)
     registration_id = Column(Integer, ForeignKey("team_registrations.id"))
@@ -177,7 +176,7 @@ async def get_db_async():
 async def save_registration_to_db(session: AsyncSession, registration: TeamRegistration, team_id: str):
     """Save team registration to database"""
     # Create team registration record
-    team_db = TeamRegistrationDB(
+    team_db = TeamRegistrationAsyncDB(
         team_id=team_id,
         church_name=registration.churchName,
         team_name=registration.teamName,
@@ -188,7 +187,7 @@ async def save_registration_to_db(session: AsyncSession, registration: TeamRegis
     await session.flush()  # Get the ID
 
     # Create captain record
-    captain_db = CaptainDB(
+    captain_db = CaptainAsyncDB(
         registration_id=team_db.id,
         name=registration.captain.name,
         phone=registration.captain.phone,
@@ -198,7 +197,7 @@ async def save_registration_to_db(session: AsyncSession, registration: TeamRegis
     session.add(captain_db)
 
     # Create vice-captain record
-    vice_captain_db = ViceCaptainDB(
+    vice_captain_db = ViceCaptainAsyncDB(
         registration_id=team_db.id,
         name=registration.viceCaptain.name,
         phone=registration.viceCaptain.phone,
@@ -209,7 +208,7 @@ async def save_registration_to_db(session: AsyncSession, registration: TeamRegis
 
     # Create player records
     for player in registration.players:
-        player_db = PlayerDB(
+        player_db = PlayerAsyncDB(
             registration_id=team_db.id,
             name=player.name,
             age=player.age,
@@ -525,34 +524,41 @@ def admin_get_teams(db: Session = Depends(get_db)):
     - Payment receipt status
     """
     try:
-        # Query team registrations with captain info
-        registrations = db.query(TeamRegistrationDB).all()
-        result = []
+        # Query team registrations using SQL
+        query = text("""
+            SELECT tr.id, tr.team_id, tr.team_name, tr.church_name, 
+                   tr.payment_receipt, tr.created_at,
+                   c.name as captain_name, c.phone as captain_phone, c.email as captain_email,
+                   vc.name as vice_captain_name, vc.phone as vice_captain_phone, vc.email as vice_captain_email,
+                   COUNT(p.id) as player_count
+            FROM team_registrations tr
+            LEFT JOIN captains c ON c.registration_id = tr.id
+            LEFT JOIN vice_captains vc ON vc.registration_id = tr.id
+            LEFT JOIN players p ON p.registration_id = tr.id
+            GROUP BY tr.id, c.id, vc.id
+            ORDER BY tr.created_at DESC
+        """)
         
-        for reg in registrations:
-            # Get captain
-            captain = db.query(CaptainDB).filter(CaptainDB.registration_id == reg.id).first()
-            # Get vice captain
-            vice_captain = db.query(ViceCaptainDB).filter(ViceCaptainDB.registration_id == reg.id).first()
-            # Get player count
-            player_count = db.query(PlayerDB).filter(PlayerDB.registration_id == reg.id).count()
-            
-            result.append({
-                "teamId": reg.team_id,
-                "teamName": reg.team_name,
-                "churchName": reg.church_name,
-                "captainName": captain.name if captain else None,
-                "captainPhone": captain.phone if captain else None,
-                "captainEmail": captain.email if captain else None,
-                "viceCaptainName": vice_captain.name if vice_captain else None,
-                "viceCaptainPhone": vice_captain.phone if vice_captain else None,
-                "viceCaptainEmail": vice_captain.email if vice_captain else None,
-                "playerCount": player_count,
-                "registrationDate": str(reg.created_at) if reg.created_at else None,
-                "paymentReceipt": reg.payment_receipt
+        result = db.execute(query).fetchall()
+        teams = []
+        
+        for row in result:
+            teams.append({
+                "teamId": row.team_id,
+                "teamName": row.team_name,
+                "churchName": row.church_name,
+                "captainName": row.captain_name,
+                "captainPhone": row.captain_phone,
+                "captainEmail": row.captain_email,
+                "viceCaptainName": row.vice_captain_name,
+                "viceCaptainPhone": row.vice_captain_phone,
+                "viceCaptainEmail": row.vice_captain_email,
+                "playerCount": row.player_count,
+                "registrationDate": str(row.created_at) if row.created_at else None,
+                "paymentReceipt": row.payment_receipt
             })
         
-        return {"success": True, "teams": result}
+        return {"success": True, "teams": teams}
     
     except Exception as e:
         print(f"❌ Error fetching teams: {str(e)}")
