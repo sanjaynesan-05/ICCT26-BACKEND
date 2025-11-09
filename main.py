@@ -423,7 +423,59 @@ app.add_middleware(
 async def startup_event():
     try:
         await init_db()
-        print("✅ Database tables initialized")
+        print("✅ Database tables initialized (async)")
+
+        # Also ensure tables exist for sync operations using raw SQL
+        from database import engine
+        with engine.connect() as conn:
+            # Create tables if they don't exist
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS team_registrations (
+                    id SERIAL PRIMARY KEY,
+                    team_id VARCHAR(50) UNIQUE NOT NULL,
+                    church_name VARCHAR(200) NOT NULL,
+                    team_name VARCHAR(100) NOT NULL,
+                    pastor_letter TEXT,
+                    payment_receipt TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS captains (
+                    id SERIAL PRIMARY KEY,
+                    registration_id INTEGER REFERENCES team_registrations(id),
+                    name VARCHAR(100) NOT NULL,
+                    phone VARCHAR(15) NOT NULL,
+                    whatsapp VARCHAR(10) NOT NULL,
+                    email VARCHAR(255) NOT NULL
+                )
+            """))
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS vice_captains (
+                    id SERIAL PRIMARY KEY,
+                    registration_id INTEGER REFERENCES team_registrations(id),
+                    name VARCHAR(100) NOT NULL,
+                    phone VARCHAR(15) NOT NULL,
+                    whatsapp VARCHAR(10) NOT NULL,
+                    email VARCHAR(255) NOT NULL
+                )
+            """))
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS players (
+                    id SERIAL PRIMARY KEY,
+                    registration_id INTEGER REFERENCES team_registrations(id),
+                    name VARCHAR(100) NOT NULL,
+                    age INTEGER NOT NULL,
+                    phone VARCHAR(15) NOT NULL,
+                    role VARCHAR(20) NOT NULL,
+                    aadhar_file TEXT,
+                    subscription_file TEXT
+                )
+            """))
+            conn.commit()
+        print("✅ Database tables initialized (sync)")
+
     except Exception as e:
         print(f"[WARNING] Database initialization failed: {e}")
         print("   Make sure PostgreSQL is running and DATABASE_URL is correct")
