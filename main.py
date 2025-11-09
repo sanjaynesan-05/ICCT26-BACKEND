@@ -444,6 +444,18 @@ async def read_root():
     }
 
 
+@app.get("/debug/db")
+def debug_database():
+    """Debug database connection"""
+    try:
+        db = next(get_db())
+        result = db.execute(text("SELECT COUNT(*) FROM team_registrations"))
+        count = result.fetchone()[0]
+        return {"status": "success", "team_count": count}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
