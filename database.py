@@ -1,26 +1,22 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 import os
-from dotenv import load_dotenv
-
-load_dotenv()
 
 # PostgreSQL connection URL - Use Render database
-# Convert async URL to sync URL if needed
-DATABASE_URL = os.getenv(
+# Read DATABASE_URL directly and convert for psycopg2
+raw_db_url = os.environ.get(
     'DATABASE_URL',
     "postgresql://icctadmin:FhfKgVwHX7P7hmObQJFQvN0YBZxYUly7@dpg-d45imk49c44c73c4j4v0-a/icct26_db"
 )
 
-# Replace asyncpg with psycopg2 for synchronous operations
-# Only convert if it contains asyncpg
-if DATABASE_URL and 'postgresql+asyncpg://' in DATABASE_URL:
-    DATABASE_URL = DATABASE_URL.replace('postgresql+asyncpg://', 'postgresql://')
-elif DATABASE_URL and DATABASE_URL.startswith('postgres://'):
-    # Handle postgres:// URLs (common on some platforms)
-    DATABASE_URL = DATABASE_URL.replace('postgres://', 'postgresql://')
+# Convert to psycopg2 compatible format
+DATABASE_URL = raw_db_url
+if raw_db_url.startswith('postgresql+asyncpg://'):
+    DATABASE_URL = raw_db_url.replace('postgresql+asyncpg://', 'postgresql://')
+elif raw_db_url.startswith('postgres://'):
+    DATABASE_URL = raw_db_url.replace('postgres://', 'postgresql://')
 
-print(f"Using DATABASE_URL: {DATABASE_URL[:50]}...")  # Debug log (first 50 chars)
+print(f"Sync DATABASE_URL configured: {DATABASE_URL[:50]}...")
 
 # Create SQLAlchemy engine
 engine = create_engine(DATABASE_URL)
