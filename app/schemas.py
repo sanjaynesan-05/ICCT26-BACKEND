@@ -3,7 +3,7 @@ Pydantic schemas for request/response validation
 Contains all data models for API contracts
 """
 
-from pydantic import BaseModel, Field, EmailStr, validator
+from pydantic import BaseModel, Field, EmailStr, validator, ConfigDict
 from typing import Optional, List
 from datetime import datetime
 from app.config import settings
@@ -61,17 +61,16 @@ class PlayerDetails(BaseModel):
             )
         return v
 
-    class Config:
-        schema_extra = {
-            "example": {
-                "name": "Rajesh Kumar",
-                "age": 25,
-                "phone": "+919876543210",
-                "role": "Batsman",
-                "aadharFile": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQ...",
-                "subscriptionFile": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQ..."
-            }
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "name": "Rajesh Kumar",
+            "age": 25,
+            "phone": "+919876543210",
+            "role": "Batsman",
+            "aadharFile": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQ...",
+            "subscriptionFile": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQ..."
         }
+    })
 
 
 class CaptainInfo(BaseModel):
@@ -103,15 +102,14 @@ class CaptainInfo(BaseModel):
         description="Captain email address"
     )
 
-    class Config:
-        schema_extra = {
-            "example": {
-                "name": "John Doe",
-                "phone": "+919876543210",
-                "whatsapp": "919876543210",
-                "email": "john@example.com"
-            }
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "name": "John Doe",
+            "phone": "+919876543210",
+            "whatsapp": "919876543210",
+            "email": "john@example.com"
         }
+    })
 
 
 class ViceCaptainInfo(BaseModel):
@@ -143,15 +141,14 @@ class ViceCaptainInfo(BaseModel):
         description="Vice-Captain email address"
     )
 
-    class Config:
-        schema_extra = {
-            "example": {
-                "name": "Jane Smith",
-                "phone": "+919123456789",
-                "whatsapp": "919123456789",
-                "email": "jane@example.com"
-            }
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "name": "Jane Smith",
+            "phone": "+919123456789",
+            "whatsapp": "919123456789",
+            "email": "jane@example.com"
         }
+    })
 
 
 class TeamRegistration(BaseModel):
@@ -207,35 +204,34 @@ class TeamRegistration(BaseModel):
             )
         return v
 
-    class Config:
-        schema_extra = {
-            "example": {
-                "churchName": "CSI St. Peter's Church",
-                "teamName": "Youth Fellowship Team",
-                "pastorLetter": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQ...",
-                "captain": {
-                    "name": "John Doe",
-                    "phone": "+919876543210",
-                    "whatsapp": "919876543210",
-                    "email": "john@example.com"
-                },
-                "viceCaptain": {
-                    "name": "Jane Smith",
-                    "phone": "+919123456789",
-                    "whatsapp": "919123456789",
-                    "email": "jane@example.com"
-                },
-                "players": [
-                    {
-                        "name": "Player One",
-                        "age": 25,
-                        "phone": "+919800000001",
-                        "role": "Batsman"
-                    }
-                ],
-                "paymentReceipt": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQ..."
-            }
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "churchName": "CSI St. Peter's Church",
+            "teamName": "Youth Fellowship Team",
+            "pastorLetter": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQ...",
+            "captain": {
+                "name": "John Doe",
+                "phone": "+919876543210",
+                "whatsapp": "919876543210",
+                "email": "john@example.com"
+            },
+            "viceCaptain": {
+                "name": "Jane Smith",
+                "phone": "+919123456789",
+                "whatsapp": "919123456789",
+                "email": "jane@example.com"
+            },
+            "players": [
+                {
+                    "name": "Player One",
+                    "age": 25,
+                    "phone": "+919800000001",
+                    "role": "Batsman"
+                }
+            ],
+            "paymentReceipt": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQ..."
         }
+    })
 
 
 # ============================================================
@@ -255,20 +251,19 @@ class RegistrationResponse(BaseModel):
     email_sent: bool = Field(..., description="Whether confirmation email was sent")
     database_saved: bool = Field(..., description="Whether data was saved to database")
 
-    class Config:
-        schema_extra = {
-            "example": {
-                "team_id": "ICCT26-20251109093800",
-                "team_name": "Youth Fellowship Team",
-                "church_name": "CSI St. Peter's Church",
-                "captain_name": "John Doe",
-                "vice_captain_name": "Jane Smith",
-                "players_count": 11,
-                "registered_at": "2025-11-09T09:38:00.123456",
-                "email_sent": True,
-                "database_saved": True
-            }
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "team_id": "ICCT26-20251109093800",
+            "team_name": "Youth Fellowship Team",
+            "church_name": "CSI St. Peter's Church",
+            "captain_name": "John Doe",
+            "vice_captain_name": "Jane Smith",
+            "players_count": 11,
+            "registered_at": "2025-11-09T09:38:00.123456",
+            "email_sent": True,
+            "database_saved": True
         }
+    })
 
 
 class TeamListItem(BaseModel):

@@ -1,9 +1,9 @@
 """
 Pydantic schemas for team registration matching frontend JSON structure.
-Complete request/response validation models.
+Accepts both camelCase (frontend) and snake_case (raw/postman) inputs via aliases.
 """
 
-from pydantic import BaseModel, Field, EmailStr, field_validator
+from pydantic import BaseModel, Field, EmailStr, field_validator, ConfigDict
 from typing import Optional, List
 from datetime import datetime
 
@@ -13,71 +13,55 @@ from datetime import datetime
 # ============================================================
 
 class CaptainInfo(BaseModel):
-    """Captain information schema - matches frontend JSON"""
-    
-    name: str = Field(
-        ...,
-        description="Captain full name",
-        min_length=1,
-        max_length=100
-    )
-    
-    phone: str = Field(
-        ...,
-        description="Captain phone number (e.g., +919876543210)",
-        min_length=10,
-        max_length=15
-    )
-    
-    whatsapp: str = Field(
-        ...,
-        description="Captain WhatsApp number (digits only, e.g., 9876543210)",
-        min_length=10,
-        max_length=10
-    )
-    
-    email: EmailStr = Field(
-        ...,
-        description="Captain email address"
-    )
-    
+    model_config = ConfigDict(populate_by_name=True)
+
+    name: str = Field(..., min_length=1, max_length=150, description="Captain full name", alias="name")
+    phone: str = Field(..., min_length=7, max_length=20, description="Captain phone (with or without +)", alias="phone")
+    whatsapp: str = Field(..., min_length=10, max_length=20, description="Captain whatsapp (digits only or +91...)", alias="whatsapp")
+    email: EmailStr = Field(..., description="Captain email", alias="email")
+
+    # Accepts either + prefixed or plain digits (lenient)
     @field_validator('phone')
     @classmethod
-    def validate_phone(cls, v):
-        """Ensure phone is in international format"""
-        if not v.startswith('+'):
-            raise ValueError('Phone must start with +')
+    def validate_phone(cls, v: str) -> str:
+        v = v.strip()
+        if not (v.startswith('+') or v.isdigit()):
+            raise ValueError('Phone must be digits or start with +')
+        return v
+
+    @field_validator('whatsapp')
+    @classmethod
+    def validate_whatsapp(cls, v: str) -> str:
+        v = v.strip()
+        if not v.isdigit() and not v.startswith('+'):
+            raise ValueError('WhatsApp must be digits or start with +')
+        # allow either 10-digit local or +91... style
         return v
 
 
 class ViceCaptainInfo(BaseModel):
-    """Vice-captain information schema - matches frontend JSON"""
-    
-    name: str = Field(
-        ...,
-        description="Vice-captain full name",
-        min_length=1,
-        max_length=100
-    )
-    
-    phone: str = Field(
-        ...,
-        description="Vice-captain phone number (e.g., +919123456789)",
-        min_length=10,
-        max_length=15
-    )
-    
-    whatsapp: str = Field(
-        ...,
-        description="Vice-captain WhatsApp number (digits only)",
-        min_length=10,
-        max_length=10
-    )
-    
-    email: EmailStr = Field(
-        ...,
-        description="Vice-captain email address"
-    )
+    model_config = ConfigDict(populate_by_name=True)
+
+    name: str = Field(..., min_length=1, max_length=150, alias="name")
+    phone: str = Field(..., min_length=7, max_length=20, alias="phone")
+    whatsapp: str = Field(..., min_length=10, max_length=20, alias="whatsapp")
+    email: EmailStr = Field(..., alias="email")
+
+    @field_validator('phone')
+    @classmethod
+    def validate_phone(cls, v: str) -> str:
+        v = v.strip()
+        if not (v.startswith('+') or v.isdigit()):
+            raise ValueError('Phone must be digits or start with +')
+        return v
+
+    @field_validator('whatsapp')
+    @classmethod
+    def validate_whatsapp(cls, v: str) -> str:
+        v = v.strip()
+        if not v.isdigit() and not v.startswith('+'):
+            raise ValueError('WhatsApp must be digits or start with +')
+        return v
 
 
 # ============================================================
@@ -85,52 +69,23 @@ class ViceCaptainInfo(BaseModel):
 # ============================================================
 
 class PlayerInfo(BaseModel):
-    """Player information schema - matches frontend JSON"""
-    
-    name: str = Field(
-        ...,
-        description="Player full name",
-        min_length=1,
-        max_length=100
-    )
-    
-    age: int = Field(
-        ...,
-        description="Player age",
-        ge=15,
-        le=65
-    )
-    
-    phone: str = Field(
-        ...,
-        description="Player phone number (e.g., +919800000001)",
-        min_length=10,
-        max_length=15
-    )
-    
-    role: str = Field(
-        ...,
-        description="Player role (Batsman, Bowler, All-rounder, Wicket-keeper)",
-        min_length=1,
-        max_length=50
-    )
-    
-    aadharFile: Optional[str] = Field(
-        None,
-        description="Aadhar file as base64-encoded image (data:image/jpeg;base64,...)"
-    )
-    
-    subscriptionFile: Optional[str] = Field(
-        None,
-        description="Subscription file as base64-encoded image"
-    )
-    
+    model_config = ConfigDict(populate_by_name=True)
+
+    name: str = Field(..., min_length=1, max_length=150, alias="name")
+    age: int = Field(..., ge=15, le=65, alias="age")
+    phone: str = Field(..., min_length=7, max_length=20, alias="phone")
+    role: str = Field(..., min_length=1, max_length=50, alias="role")
+
+    # incoming keys: aadharFile (camelCase) OR aadhar_file (snake_case)
+    aadharFile: Optional[str] = Field(None, description="Aadhar base64 or filename", alias="aadhar_file")
+    subscriptionFile: Optional[str] = Field(None, description="Subscription base64 or filename", alias="subscription_file")
+
     @field_validator('phone')
     @classmethod
-    def validate_phone(cls, v):
-        """Ensure phone is in international format"""
-        if not v.startswith('+'):
-            raise ValueError('Phone must start with +')
+    def validate_phone(cls, v: str) -> str:
+        v = v.strip()
+        if not (v.startswith('+') or v.isdigit()):
+            raise ValueError('Phone must be digits or start with +')
         return v
 
 
@@ -139,102 +94,41 @@ class PlayerInfo(BaseModel):
 # ============================================================
 
 class TeamRegistrationRequest(BaseModel):
-    """Complete team registration schema - matches frontend JSON exactly"""
-    
-    churchName: str = Field(
-        ...,
-        description="Church name",
-        min_length=1,
-        max_length=200
-    )
-    
-    teamName: str = Field(
-        ...,
-        description="Team name",
-        min_length=1,
-        max_length=100
-    )
-    
-    pastorLetter: Optional[str] = Field(
-        None,
-        description="Pastor letter as base64-encoded image"
-    )
-    
-    paymentReceipt: Optional[str] = Field(
-        None,
-        description="Payment receipt as base64-encoded image"
-    )
-    
-    captain: CaptainInfo = Field(
-        ...,
-        description="Captain information"
-    )
-    
-    viceCaptain: ViceCaptainInfo = Field(
-        ...,
-        description="Vice-captain information"
-    )
-    
-    players: List[PlayerInfo] = Field(
-        ...,
-        description="List of team players (minimum 1)",
-        min_length=1,
-        max_length=15
-    )
-    
-    class Config:
-        schema_extra = {
-            "example": {
-                "churchName": "CSI St. Peter's Church",
-                "teamName": "Youth Fellowship Team",
-                "pastorLetter": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEA...",
-                "paymentReceipt": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEA...",
-                "captain": {
-                    "name": "John Doe",
-                    "phone": "+919876543210",
-                    "whatsapp": "9876543210",
-                    "email": "john@example.com"
-                },
-                "viceCaptain": {
-                    "name": "Jane Smith",
-                    "phone": "+919123456789",
-                    "whatsapp": "9123456789",
-                    "email": "jane@example.com"
-                },
-                "players": [
-                    {
-                        "name": "Player One",
-                        "age": 25,
-                        "phone": "+919800000001",
-                        "role": "Batsman",
-                        "aadharFile": "data:image/jpeg;base64,...",
-                        "subscriptionFile": "data:image/jpeg;base64,..."
-                    }
-                ]
-            }
-        }
+    """
+    Accepts either:
+      - camelCase keys from frontend (churchName, teamName, pastorLetter, paymentReceipt)
+      - OR snake_case keys from other clients (church_name, team_name, pastor_letter, payment_receipt)
+    """
+    model_config = ConfigDict(populate_by_name=True)
+
+    churchName: str = Field(..., min_length=1, max_length=200, description="Church name", alias="church_name")
+    teamName: str = Field(..., min_length=1, max_length=200, description="Team name", alias="team_name")
+
+    pastorLetter: Optional[str] = Field(None, description="Pastor letter as base64 or filename", alias="pastor_letter")
+    paymentReceipt: Optional[str] = Field(None, description="Payment receipt as base64 or filename", alias="payment_receipt")
+
+    captain: CaptainInfo = Field(..., description="Captain information", alias="captain")
+    viceCaptain: ViceCaptainInfo = Field(..., description="Vice-captain information", alias="viceCaptain")
+
+    # Accept list length 1..15 (for testing keep 1 allowed). If you want enforce 11, change min_length to 11.
+    players: List[PlayerInfo] = Field(..., min_length=1, max_length=15, description="List of players", alias="players")
 
 
 # ============================================================
-# Team Registration Response Schema
+# Response Schemas
 # ============================================================
 
 class PlayerResponse(BaseModel):
-    """Player response model"""
-    
     player_id: str
     name: str
     age: int
     phone: str
     role: str
-    
-    class Config:
-        from_attributes = True
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class TeamRegistrationResponse(BaseModel):
-    """Success response after team registration"""
-    
     success: bool = True
     message: str
     team_id: str
@@ -244,35 +138,11 @@ class TeamRegistrationResponse(BaseModel):
     vice_captain_name: str
     player_count: int
     registration_date: datetime
-    
-    class Config:
-        schema_extra = {
-            "example": {
-                "success": True,
-                "message": "Team registered successfully!",
-                "team_id": "TEAM-2025-001",
-                "team_name": "Youth Fellowship Team",
-                "church_name": "CSI St. Peter's Church",
-                "captain_name": "John Doe",
-                "vice_captain_name": "Jane Smith",
-                "player_count": 11,
-                "registration_date": "2025-01-15T10:30:00"
-            }
-        }
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ErrorResponse(BaseModel):
-    """Error response model"""
-    
     success: bool = False
     error: str
     details: Optional[str] = None
-    
-    class Config:
-        schema_extra = {
-            "example": {
-                "success": False,
-                "error": "Invalid request data",
-                "details": "Players list must have at least 1 player"
-            }
-        }

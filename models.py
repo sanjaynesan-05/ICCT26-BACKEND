@@ -7,19 +7,25 @@ class Team(Base):
     __tablename__ = "teams"
 
     id = Column(Integer, primary_key=True, index=True)
-    team_id = Column(String(20), unique=True, nullable=False, index=True)
-    team_name = Column(String(100), nullable=False)
+    # Increase team_id length to avoid truncation for generated IDs
+    team_id = Column(String(50), unique=True, nullable=False, index=True)
+    team_name = Column(String(200), nullable=False)
     church_name = Column(String(200), nullable=False)
-    captain_name = Column(String(100), nullable=False)
-    captain_phone = Column(String(15), nullable=False)
+
+    captain_name = Column(String(150), nullable=False)
+    captain_phone = Column(String(20), nullable=False)
     captain_email = Column(String(255), nullable=False)
-    captain_whatsapp = Column(String(10))
-    vice_captain_name = Column(String(100), nullable=False)
-    vice_captain_phone = Column(String(15), nullable=False)
+    captain_whatsapp = Column(String(20), nullable=True)
+
+    vice_captain_name = Column(String(150), nullable=False)
+    vice_captain_phone = Column(String(20), nullable=False)
     vice_captain_email = Column(String(255), nullable=False)
-    vice_captain_whatsapp = Column(String(10))
-    payment_receipt = Column(String(50))
-    pastor_letter = Column(Text)
+    vice_captain_whatsapp = Column(String(20), nullable=True)
+
+    # Use Text for file/storage references (base64 or URLs)
+    payment_receipt = Column(Text, nullable=True)
+    pastor_letter = Column(Text, nullable=True)
+
     registration_date = Column(TIMESTAMP, nullable=False, server_default=func.now())
     created_at = Column(TIMESTAMP, server_default=func.now())
 
@@ -32,16 +38,19 @@ class Player(Base):
     __tablename__ = "players"
 
     id = Column(Integer, primary_key=True, index=True)
-    player_id = Column(String(25), unique=True, nullable=False, index=True)
-    team_id = Column(String(20), ForeignKey("teams.team_id"), nullable=False)
-    name = Column(String(100), nullable=False)
+    player_id = Column(String(50), unique=True, nullable=False, index=True)
+    # team_id references Team.team_id (string) — lengths should match
+    team_id = Column(String(50), ForeignKey("teams.team_id"), nullable=False)
+
+    name = Column(String(150), nullable=False)
     age = Column(Integer, nullable=False)
-    phone = Column(String(15), nullable=False)
-    email = Column(String(255), nullable=False)
-    role = Column(String(20), nullable=False)
-    jersey_number = Column(String(3), nullable=False)
-    aadhar_file = Column(Text)
-    subscription_file = Column(Text)
+    phone = Column(String(20), nullable=False)
+    role = Column(String(50), nullable=False)
+
+    # store file refs or short base64 snippets as Text
+    aadhar_file = Column(Text, nullable=True)
+    subscription_file = Column(Text, nullable=True)
+
     created_at = Column(TIMESTAMP, server_default=func.now())
 
     # Relationship to team
