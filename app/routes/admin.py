@@ -26,8 +26,10 @@ async def get_all_teams(db: AsyncSession = Depends(get_db_async)):
     - Registration date
     - Payment receipt status
     """
+    logger.info("GET /admin/teams - Fetching all teams...")
     try:
         teams = await DatabaseService.get_all_teams(db)
+        logger.info(f"Successfully fetched {len(teams)} teams")
         return JSONResponse(content={"success": True, "teams": teams})
 
     except Exception as e:
@@ -47,12 +49,15 @@ async def get_team_details(team_id: str, db: AsyncSession = Depends(get_db_async
     - Team information (ID, Name, Church, Captain, Vice-Captain, etc.)
     - Complete player roster with all details
     """
+    logger.info(f"GET /admin/teams/{team_id} - Fetching team details...")
     try:
         team_data = await DatabaseService.get_team_details(db, team_id)
 
         if not team_data:
+            logger.warning(f"Team not found: {team_id}")
             raise HTTPException(status_code=404, detail="Team not found")
 
+        logger.info(f"Successfully fetched details for team: {team_id}")
         return JSONResponse(content=team_data)
 
     except HTTPException:
@@ -74,12 +79,15 @@ async def get_player_details(player_id: int, db: AsyncSession = Depends(get_db_a
     - Player information (ID, Name, Age, Phone, Role, etc.)
     - Team information (Team ID, Name, Church)
     """
+    logger.info(f"GET /admin/players/{player_id} - Fetching player details...")
     try:
         player_data = await DatabaseService.get_player_details(db, player_id)
 
         if not player_data:
+            logger.warning(f"Player not found: {player_id}")
             raise HTTPException(status_code=404, detail="Player not found")
 
+        logger.info(f"Successfully fetched player details for ID: {player_id}")
         return JSONResponse(content=player_data)
 
     except HTTPException:

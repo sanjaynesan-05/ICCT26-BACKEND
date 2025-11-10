@@ -142,8 +142,8 @@ async def startup_event():
         logger.info("✅ Database tables initialized (async)")
 
         # Also ensure tables exist for sync operations using raw SQL
-        from database import engine
-        with engine.connect() as conn:
+        from database import sync_engine
+        with sync_engine.connect() as conn:
             # Create tables if they don't exist
             conn.execute(text("""
                 CREATE TABLE IF NOT EXISTS team_registrations (
@@ -252,9 +252,9 @@ def create_tables():
     """Create database tables manually"""
     try:
         from app.services import DatabaseService
-        from database import engine
+        from database import sync_engine
         
-        with engine.connect() as conn:
+        with sync_engine.connect() as conn:
             session_obj = type('Session', (), {
                 'execute': lambda self, query: conn.execute(query),
                 'commit': lambda self: conn.commit(),
@@ -275,11 +275,15 @@ def create_tables():
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request, exc):
     """Custom HTTP exception handler"""
-    return {
-        "success": False,
-        "message": exc.detail if isinstance(exc.detail, str) else str(exc.detail),
-        "status_code": exc.status_code
-    }
+    from fastapi.responses import JSONResponse
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "success": False,
+            "message": exc.detail if isinstance(exc.detail, str) else str(exc.detail),
+            "status_code": exc.status_code
+        }
+    )
 
 
 # ============================================================

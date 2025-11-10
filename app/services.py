@@ -270,9 +270,10 @@ class DatabaseService:
             raise
 
     @staticmethod
-    def get_all_teams(db: Session) -> List[Dict[str, Any]]:
+    async def get_all_teams(db: AsyncSession) -> List[Dict[str, Any]]:
         """Get all registered teams"""
         
+        logger.info("Fetching all teams...")
         try:
             query = text("""
                 SELECT t.id, t.team_id, t.team_name, t.church_name, 
@@ -286,25 +287,27 @@ class DatabaseService:
                 ORDER BY t.created_at DESC
             """)
             
-            result = db.execute(query).fetchall()
+            result = await db.execute(query)
+            data = result.mappings().all()
             teams = []
             
-            for row in result:
+            for row in data:
                 teams.append({
-                    "teamId": row.team_id,
-                    "teamName": row.team_name,
-                    "churchName": row.church_name,
-                    "captainName": row.captain_name,
-                    "captainPhone": row.captain_phone,
-                    "captainEmail": row.captain_email,
-                    "viceCaptainName": row.vice_captain_name,
-                    "viceCaptainPhone": row.vice_captain_phone,
-                    "viceCaptainEmail": row.vice_captain_email,
-                    "playerCount": row.player_count,
-                    "registrationDate": str(row.created_at) if row.created_at else None,
-                    "paymentReceipt": row.payment_receipt
+                    "teamId": row["team_id"],
+                    "teamName": row["team_name"],
+                    "churchName": row["church_name"],
+                    "captainName": row["captain_name"],
+                    "captainPhone": row["captain_phone"],
+                    "captainEmail": row["captain_email"],
+                    "viceCaptainName": row["vice_captain_name"],
+                    "viceCaptainPhone": row["vice_captain_phone"],
+                    "viceCaptainEmail": row["vice_captain_email"],
+                    "playerCount": row["player_count"],
+                    "registrationDate": str(row["created_at"]) if row["created_at"] else None,
+                    "paymentReceipt": row["payment_receipt"]
                 })
             
+            logger.info(f"Found {len(teams)} teams")
             return teams
             
         except Exception as e:
@@ -312,9 +315,10 @@ class DatabaseService:
             raise
 
     @staticmethod
-    def get_team_details(db: Session, team_id: str) -> Dict[str, Any]:
+    async def get_team_details(db: AsyncSession, team_id: str) -> Dict[str, Any]:
         """Get detailed information about a specific team"""
         
+        logger.info(f"Fetching team details for team_id: {team_id}")
         try:
             team_query = text("""
                 SELECT id, team_id, team_name, church_name, payment_receipt, created_at,
@@ -324,9 +328,11 @@ class DatabaseService:
                 WHERE team_id = :team_id
             """)
             
-            team_result = db.execute(team_query, {"team_id": team_id}).fetchone()
+            result = await db.execute(team_query, {"team_id": team_id})
+            team_data = result.mappings().first()
             
-            if not team_result:
+            if not team_data:
+                logger.warning(f"Team not found: {team_id}")
                 return None
             
             # Get players for this team
@@ -337,39 +343,38 @@ class DatabaseService:
                 ORDER BY id
             """)
             
-            players_result = db.execute(
-                players_query,
-                {"team_id": team_id}
-            ).fetchall()
+            result = await db.execute(players_query, {"team_id": team_id})
+            players_data = result.mappings().all()
             
+            logger.info(f"Found team with {len(players_data)} players")
             return {
                 "team": {
-                    "teamId": team_result.team_id,
-                    "teamName": team_result.team_name,
-                    "churchName": team_result.church_name,
+                    "teamId": team_data["team_id"],
+                    "teamName": team_data["team_name"],
+                    "churchName": team_data["church_name"],
                     "captain": {
-                        "name": team_result.captain_name,
-                        "phone": team_result.captain_phone,
-                        "email": team_result.captain_email
-                    } if team_result.captain_name else None,
+                        "name": team_data["captain_name"],
+                        "phone": team_data["captain_phone"],
+                        "email": team_data["captain_email"]
+                    } if team_data["captain_name"] else None,
                     "viceCaptain": {
-                        "name": team_result.vice_captain_name,
-                        "phone": team_result.vice_captain_phone,
-                        "email": team_result.vice_captain_email
-                    } if team_result.vice_captain_name else None,
-                    "paymentReceipt": team_result.payment_receipt,
-                    "registrationDate": str(team_result.created_at) if team_result.created_at else None
+                        "name": team_data["vice_captain_name"],
+                        "phone": team_data["vice_captain_phone"],
+                        "email": team_data["vice_captain_email"]
+                    } if team_data["vice_captain_name"] else None,
+                    "paymentReceipt": team_data["payment_receipt"],
+                    "registrationDate": str(team_data["created_at"]) if team_data["created_at"] else None
                 },
                 "players": [
                     {
-                        "playerId": p.player_id,
-                        "name": p.name,
-                        "age": p.age,
-                        "phone": p.phone,
-                        "email": p.email,
-                        "role": p.role,
-                        "jerseyNumber": p.jersey_number
-                    } for p in players_result
+                        "playerId": p["player_id"],
+                        "name": p["name"],
+                        "age": p["age"],
+                        "phone": p["phone"],
+                        "email": p["email"],
+                        "role": p["role"],
+                        "jerseyNumber": p["jersey_number"]
+                    } for p in players_data
                 ]
             }
             
@@ -378,9 +383,10 @@ class DatabaseService:
             raise
 
     @staticmethod
-    def get_player_details(db: Session, player_id: int) -> Dict[str, Any]:
+    async def get_player_details(db: AsyncSession, player_id: int) -> Dict[str, Any]:
         """Fetch details of a specific player"""
         
+        logger.info(f"Fetching player details for player_id: {player_id}")
         try:
             player_query = text("""
                 SELECT p.id, p.player_id, p.name, p.age, p.phone, p.email, p.role, p.jersey_number,
@@ -391,25 +397,28 @@ class DatabaseService:
                 WHERE p.id = :player_id
             """)
             
-            player_result = db.execute(player_query, {"player_id": player_id}).fetchone()
+            result = await db.execute(player_query, {"player_id": player_id})
+            player_data = result.mappings().first()
             
-            if not player_result:
+            if not player_data:
+                logger.warning(f"Player not found: {player_id}")
                 return None
             
+            logger.info(f"Found player: {player_data['name']}")
             return {
-                "playerId": player_result.player_id,
-                "name": player_result.name,
-                "age": player_result.age,
-                "phone": player_result.phone,
-                "email": player_result.email,
-                "role": player_result.role,
-                "jerseyNumber": player_result.jersey_number,
-                "aadharFile": player_result.aadhar_file,
-                "subscriptionFile": player_result.subscription_file,
+                "playerId": player_data["player_id"],
+                "name": player_data["name"],
+                "age": player_data["age"],
+                "phone": player_data["phone"],
+                "email": player_data["email"],
+                "role": player_data["role"],
+                "jerseyNumber": player_data["jersey_number"],
+                "aadharFile": player_data["aadhar_file"],
+                "subscriptionFile": player_data["subscription_file"],
                 "team": {
-                    "teamId": player_result.team_id,
-                    "teamName": player_result.team_name,
-                    "churchName": player_result.church_name
+                    "teamId": player_data["team_id"],
+                    "teamName": player_data["team_name"],
+                    "churchName": player_data["church_name"]
                 }
             }
             

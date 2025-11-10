@@ -275,6 +275,7 @@ async def get_team_details(
     Returns:
         Team info with players list
     """
+    logger.info(f"GET /api/teams/{team_id} - Fetching team details...")
     
     try:
         # Fetch team
@@ -283,6 +284,7 @@ async def get_team_details(
         team = result.scalar_one_or_none()
         
         if not team:
+            logger.warning(f"Team not found: {team_id}")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Team with ID {team_id} not found"
@@ -355,6 +357,7 @@ async def list_all_teams(
     Returns:
         List of teams with counts
     """
+    logger.info(f"GET /api/teams - Listing teams (skip={skip}, limit={limit})...")
     
     try:
         if limit > 100:
