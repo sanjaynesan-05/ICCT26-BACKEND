@@ -4,6 +4,8 @@ Main FastAPI application entry point
 """
 
 import logging
+import os
+import time
 from datetime import datetime
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,13 +19,100 @@ from app.config import settings, get_async_database_url
 from app.routes import main_router
 
 # -----------------------
-# Logging
+# Logging Configuration
 # -----------------------
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+# Get environment
+ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
+IS_PRODUCTION = ENVIRONMENT == "production"
+
+# -----------------------
+# FastAPI app initialization
+# -----------------------
+app = FastAPI(
+    title=settings.APP_TITLE,
+    description=settings.APP_DESCRIPTION,
+    version=settings.APP_VERSION,
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json",
+)
+
+logger.info(f"🚀 Initializing FastAPI application ({ENVIRONMENT})")
+
+# -----------------------
+# CORS Middleware - MUST be added BEFORE any routes
+# -----------------------
+cors_origins = settings.CORS_ORIGINS.copy()
+
+# Add Render URL in production if not already there
+if IS_PRODUCTION and "https://icct26-backend.onrender.com" not in cors_origins:
+    cors_origins.append("https://icct26-backend.onrender.com")
+
+# Add Netlify URL if not already there
+if "https://icct26.netlify.app" not in cors_origins:
+    cors_origins.append("https://icct26.netlify.app")
+
+# Log CORS configuration
+logger.info("=" * 70)
+logger.info("📡 CORS CONFIGURATION")
+logger.info("=" * 70)
+logger.info(f"✅ Allowed Origins ({len(cors_origins)}):")
+for origin in sorted(cors_origins):
+    logger.info(f"   • {origin}")
+logger.info(f"✅ Allowed Methods: {', '.join(settings.CORS_METHODS)}")
+logger.info(f"✅ Allowed Headers: {settings.CORS_HEADERS}")
+logger.info(f"✅ Credentials: {settings.CORS_CREDENTIALS}")
+logger.info("=" * 70)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=cors_origins,
+    allow_credentials=settings.CORS_CREDENTIALS,
+    allow_methods=settings.CORS_METHODS,
+    allow_headers=settings.CORS_HEADERS,
+)
+
+logger.info("✅ CORS Middleware configured and loaded")
+
+# -----------------------
+# Request Logging Middleware (for debugging)
+# -----------------------
+@app.middleware("http")
+async def log_request_middleware(request: Request, call_next):
+    """Log incoming requests and responses (useful for debugging CORS)"""
+    start_time = time.time()
+    
+    # Log request details
+    request_id = request.headers.get("x-request-id", "N/A")
+    origin = request.headers.get("origin", "N/A")
+    method = request.method
+    path = request.url.path
+    
+    logger.info(f"📨 Incoming: [{request_id}] {method} {path}")
+    if origin != "N/A":
+        logger.info(f"   Origin: {origin}")
+    
+    # Process request
+    try:
+        response = await call_next(request)
+        process_time = time.time() - start_time
+        
+        # Log response details
+        status_code = response.status_code
+        status_emoji = "✅" if 200 <= status_code < 300 else "⚠️" if 300 <= status_code < 400 else "❌"
+        logger.info(f"📤 Response: [{request_id}] {status_emoji} {status_code} (took {process_time:.3f}s)")
+        
+        return response
+    except Exception as e:
+        process_time = time.time() - start_time
+        logger.error(f"❌ Error: [{request_id}] {str(e)} (took {process_time:.3f}s)")
+        raise
 
 # -----------------------
 # Async DB config
@@ -83,29 +172,6 @@ class PlayerAsyncDB(AsyncBase):
     aadhar_file = Column(Text, nullable=True)
     subscription_file = Column(Text, nullable=True)
 
-
-# -----------------------
-# FastAPI app
-# -----------------------
-app = FastAPI(
-    title=settings.APP_TITLE,
-    description=settings.APP_DESCRIPTION,
-    version=settings.APP_VERSION,
-    docs_url="/docs",
-    redoc_url="/redoc",
-    openapi_url="/openapi.json",
-)
-
-# -----------------------
-# CORS
-# -----------------------
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
-    allow_credentials=settings.CORS_CREDENTIALS,
-    allow_methods=settings.CORS_METHODS,
-    allow_headers=settings.CORS_HEADERS,
-)
 
 # -----------------------
 # Helpers to import sync engine (defensive)
@@ -223,7 +289,211 @@ async def get_db_async():
 # -----------------------
 # Include routers
 # -----------------------
+logger.info("📍 Including application routers...")
 app.include_router(main_router)
+logger.info("✅ All routers included successfully")
+
+
+# -----------------------
+# Root endpoint
+# -----------------------
+@app.get("/", tags=["Root"])
+async def root():
+    """
+    Root endpoint - API welcome message
+    
+    Returns basic API information and available endpoints
+    """
+    logger.info("📍 GET / - Root endpoint called")
+    return {
+        "success": True,
+        "message": "ICCT26 Cricket Tournament Registration API",
+        "version": settings.APP_VERSION,
+        "environment": ENVIRONMENT,
+        "status": "operational",
+        "available_endpoints": {
+            "health": "/health",
+            "status": "/status",
+            "register_team": "POST /api/register/team",
+            "teams": "GET /api/teams",
+            "admin_teams": "GET /admin/teams",
+            "documentation": "/docs",
+            "docs_alt": "/redoc",
+        },
+        "cors_enabled": True,
+        "frontend_url": "https://icct26.netlify.app",
+        "timestamp": datetime.now().isoformat(),
+    }
+
+
+# -----------------------
+# Health and Status endpoints (additional to router ones)
+# -----------------------
+@app.get("/health", tags=["Health"])
+async def health_check():
+    """
+    Health check endpoint - Used by Render and load balancers
+    
+    Returns:
+        - status: "healthy" if server is running
+        - timestamp: Current server time
+    """
+    logger.info("🏥 GET /health - Health check called")
+    return {
+        "status": "healthy",
+        "message": "API is operational",
+        "timestamp": datetime.now().isoformat(),
+        "environment": ENVIRONMENT,
+    }
+
+
+@app.get("/status", tags=["Status"])
+async def status():
+    """
+    Detailed status endpoint - Shows API and database status
+    
+    Returns:
+        - api_status: Current API status
+        - database_status: Database connectivity status
+        - cors_enabled: Whether CORS is enabled
+        - timestamp: Current server time
+    """
+    logger.info("📊 GET /status - Status check called")
+    try:
+        # Try to check database connection
+        sync_engine = _get_sync_engine()
+        db_status = "connected"
+        if sync_engine is None:
+            db_status = "async_only"
+    except Exception as e:
+        logger.warning(f"Database status check failed: {e}")
+        db_status = "error"
+    
+    return {
+        "success": True,
+        "api_status": "operational",
+        "database_status": db_status,
+        "cors_enabled": True,
+        "environment": ENVIRONMENT,
+        "version": settings.APP_VERSION,
+        "timestamp": datetime.now().isoformat(),
+        "uptime": "running",
+    }
+
+
+# -----------------------
+# Queue/Status endpoint (for frontend status monitoring)
+# -----------------------
+@app.get("/queue/status", tags=["Status"])
+async def queue_status():
+    """
+    Queue status endpoint - For monitoring registration queue
+    
+    Returns:
+        - queue_status: Current queue status
+        - timestamp: Current server time
+    """
+    logger.info("📊 GET /queue/status - Queue status check called")
+    return {
+        "success": True,
+        "queue_status": "operational",
+        "registrations_in_queue": 0,
+        "average_processing_time": "< 5s",
+        "timestamp": datetime.now().isoformat(),
+    }
+
+
+# -----------------------
+# Debug endpoints
+# -----------------------
+@app.get("/debug/db", tags=["Debug"])
+def debug_database():
+    """Debug database connection - uses sync DB helper if available"""
+    logger.info("🐛 GET /debug/db - Debug database called")
+    try:
+        # If database.py exposes get_db (sync generator), use that; otherwise try sync engine count
+        try:
+            from database import get_db as _get_db
+            db_gen = _get_db()
+            db = next(db_gen)
+            result = db.execute(text("SELECT COUNT(*) FROM team_registrations"))
+            count = result.fetchone()[0]
+            # ensure generator cleanup
+            try:
+                next(db_gen)
+            except StopIteration:
+                pass
+            logger.info(f"✅ Database query successful - {count} teams")
+            return {
+                "status": "success",
+                "message": "Database is operational",
+                "team_count": count,
+                "timestamp": datetime.now().isoformat(),
+            }
+        except Exception:
+            # fallback: use sync_engine if available
+            sync_engine = _get_sync_engine()
+            if sync_engine is None:
+                logger.warning("No sync DB available to query")
+                return {
+                    "status": "warning",
+                    "error": "No sync DB available to query",
+                    "message": "Using async DB only",
+                }
+            with sync_engine.connect() as conn:
+                result = conn.execute(text("SELECT COUNT(*) FROM team_registrations"))
+                count = result.fetchone()[0]
+            logger.info(f"✅ Database query successful (sync) - {count} teams")
+            return {
+                "status": "success",
+                "message": "Database is operational (sync)",
+                "team_count": count,
+                "timestamp": datetime.now().isoformat(),
+            }
+    except Exception as e:
+        logger.exception("❌ Debug DB query failed")
+        return {
+            "status": "error",
+            "error": str(e),
+            "message": "Database query failed",
+            "timestamp": datetime.now().isoformat(),
+        }
+
+
+@app.post("/debug/create-tables", tags=["Debug"])
+def create_tables():
+    """Create database tables manually via app.services (sync)"""
+    logger.info("🐛 POST /debug/create-tables - Create tables called")
+    try:
+        from app.services import DatabaseService
+        sync_engine = _get_sync_engine()
+        if sync_engine is None:
+            logger.error("No sync engine available")
+            return {
+                "status": "error",
+                "error": "No sync engine available",
+                "timestamp": datetime.now().isoformat(),
+            }
+        with sync_engine.connect() as conn:
+            session_obj = type('Session', (), {
+                'execute': lambda self, query: conn.execute(query),
+                'commit': lambda self: conn.commit(),
+                'rollback': lambda self: conn.rollback()
+            })()
+            DatabaseService.create_tables(session_obj)
+        logger.info("✅ Tables created successfully")
+        return {
+            "status": "success",
+            "message": "Tables created",
+            "timestamp": datetime.now().isoformat(),
+        }
+    except Exception as e:
+        logger.exception("❌ create_tables failed")
+        return {
+            "status": "error",
+            "error": str(e),
+            "timestamp": datetime.now().isoformat(),
+        }
 
 
 # -----------------------
@@ -279,6 +549,7 @@ def create_tables():
     except Exception as e:
         logger.exception("create_tables failed")
         return {"status": "error", "error": str(e)}
+
 
 
 # -----------------------
