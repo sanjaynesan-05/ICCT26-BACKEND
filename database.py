@@ -1,28 +1,27 @@
 """
-database.py
-----------------------------------------
-Database configuration and session management
-Handles both sync and async database operations for FastAPI
+Database configuration for ICCT26 API
+Complete async + sync support with PostgreSQL and Neon
 
-✅ Compatible with Neon (ssl=require)
-✅ Works locally and in Render
-✅ Provides both sync and async DB access
-✅ Safe logging without exposing credentials
+Features:
+✅ Full async/await support with asyncpg
+✅ Sync support for sync endpoints
+✅ Neon PostgreSQL compatibility
+✅ Connection pooling optimized for serverless
+✅ SSL/TLS security
 """
 
 import os
 import logging
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.orm import sessionmaker as async_sessionmaker
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from dotenv import load_dotenv
 
 # ============================================================
-# ✅ Environment Setup
+# Configuration
 # ============================================================
 
-# Load from .env.local first (local dev), fallback to .env
+# Load environment variables (.env.local first, then .env)
 load_dotenv('.env.local')
 load_dotenv()
 
@@ -31,64 +30,96 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("database")
 
 # ============================================================
-# ✅ Read DATABASE_URL
+# Read DATABASE_URL
 # ============================================================
 
-raw_db_url = os.getenv(
+DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "postgresql://user:password@localhost:5432/neondb?sslmode=require"
+    "postgresql://user:password@localhost:5432/icct26?sslmode=require"
 )
 
-if not raw_db_url:
-    raise RuntimeError("❌ DATABASE_URL not set in environment variables!")
+if not DATABASE_URL:
+    raise RuntimeError("❌ DATABASE_URL environment variable not set!")
 
-logger.info(f"🔗 Raw DATABASE_URL loaded: {raw_db_url[:60]}...")
+logger.info(f"🔗 Database URL loaded: {DATABASE_URL[:60]}...")
+
 
 # ============================================================
-# ✅ Sync Database Configuration (psycopg2)
+# Helper: Convert URL format
 # ============================================================
 
-DATABASE_URL = raw_db_url
-if raw_db_url.startswith("postgresql+asyncpg://"):
-    DATABASE_URL = raw_db_url.replace("postgresql+asyncpg://", "postgresql://")
-    DATABASE_URL = DATABASE_URL.replace("?ssl=require", "?sslmode=require").replace("&ssl=require", "&sslmode=require")
-elif raw_db_url.startswith("postgres://"):
-    DATABASE_URL = raw_db_url.replace("postgres://", "postgresql://")
+def get_sync_database_url() -> str:
+    """
+    Convert async URL to sync URL for psycopg2
+    - Replace postgresql+asyncpg:// with postgresql://
+    - Ensure ?ssl=require becomes ?sslmode=require
+    """
+    url = DATABASE_URL
+    
+    # Convert asyncpg to sync
+    if url.startswith("postgresql+asyncpg://"):
+        url = url.replace("postgresql+asyncpg://", "postgresql://")
+    
+    # Fix SSL parameter
+    url = url.replace("?ssl=require", "?sslmode=require")
+    url = url.replace("&ssl=require", "&sslmode=require")
+    
+    return url
 
-logger.info(f"⚙️ Sync DATABASE_URL configured: {DATABASE_URL[:70]}...")
 
-# Neon-compatible SSL args
-connect_args = {}
-if "neon.tech" in DATABASE_URL:
-    connect_args = {"sslmode": "require", "connect_timeout": 10}
+def get_async_database_url() -> str:
+    """
+    Convert sync URL to async URL for asyncpg
+    - Replace postgresql:// with postgresql+asyncpg://
+    - Ensure ?sslmode=require becomes ?ssl=require
+    """
+    url = DATABASE_URL
+    
+    # Convert to asyncpg if not already
+    if not url.startswith("postgresql+asyncpg://"):
+        url = url.replace("postgresql://", "postgresql+asyncpg://")
+    
+    # Fix SSL parameter
+    url = url.replace("?sslmode=require", "?ssl=require")
+    url = url.replace("&sslmode=require", "&ssl=require")
+    
+    return url
 
-# Sync engine
-engine = create_engine(
-    DATABASE_URL,
+
+# ============================================================
+# Sync Database (psycopg2)
+# ============================================================
+
+SYNC_DATABASE_URL = get_sync_database_url()
+logger.info(f"⚙️  Sync URL: {SYNC_DATABASE_URL[:60]}...")
+
+sync_engine = create_engine(
+    SYNC_DATABASE_URL,
     pool_pre_ping=True,
-    pool_recycle=300,  # Recycle connections (Neon pooler best practice)
-    pool_size=5,
-    max_overflow=2,
+    pool_recycle=300,  # Recycle connections every 5 minutes
+    pool_size=5,       # Neon pooler limit
+    max_overflow=2,    # Allow overflow beyond pool_size
     echo=False,
-    connect_args=connect_args
+    future=True
 )
 
-# Sync session factory
-SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+SessionLocal = sessionmaker(
+    bind=sync_engine,
+    autoflush=False,
+    autocommit=False,
+    expire_on_commit=False
+)
+
 
 # ============================================================
-# ✅ Async Database Configuration (asyncpg)
+# Async Database (asyncpg)
 # ============================================================
 
-DATABASE_URL_ASYNC = raw_db_url
-if raw_db_url.startswith("postgresql://"):
-    DATABASE_URL_ASYNC = raw_db_url.replace("postgresql://", "postgresql+asyncpg://")
-    DATABASE_URL_ASYNC = DATABASE_URL_ASYNC.replace("?sslmode=require", "?ssl=require").replace("&sslmode=require", "&ssl=require")
-
-logger.info(f"⚙️ Async DATABASE_URL configured: {DATABASE_URL_ASYNC[:70]}...")
+ASYNC_DATABASE_URL = get_async_database_url()
+logger.info(f"⚙️  Async URL: {ASYNC_DATABASE_URL[:60]}...")
 
 async_engine = create_async_engine(
-    DATABASE_URL_ASYNC,
+    ASYNC_DATABASE_URL,
     echo=False,
     pool_pre_ping=True,
     pool_recycle=300,
@@ -98,8 +129,7 @@ async_engine = create_async_engine(
     connect_args={
         "server_settings": {"application_name": "icct26_backend"},
         "timeout": 10,
-        "command_timeout": 30
-    } if "neon.tech" in DATABASE_URL_ASYNC else {}
+    } if "neon.tech" in ASYNC_DATABASE_URL else {}
 )
 
 AsyncSessionLocal = async_sessionmaker(
@@ -110,22 +140,25 @@ AsyncSessionLocal = async_sessionmaker(
 )
 
 # ============================================================
-# ✅ Base Model Class
+# Base Model Class
 # ============================================================
 
 Base = declarative_base()
 
+
 # ============================================================
-# ✅ Session Providers
+# Dependency Providers
 # ============================================================
 
 def get_db():
     """
-    FastAPI dependency: provides a synchronous database session.
-    Example:
+    FastAPI sync dependency for database session.
+    
+    Usage:
         @app.get("/endpoint")
         def endpoint(db: Session = Depends(get_db)):
-            ...
+            # Your code here
+            pass
     """
     db = SessionLocal()
     try:
@@ -136,14 +169,25 @@ def get_db():
 
 async def get_db_async():
     """
-    FastAPI dependency: provides an asynchronous database session.
-    Example:
-        @app.get("/endpoint")
+    FastAPI async dependency for database session.
+    
+    Usage:
+        @app.post("/endpoint")
         async def endpoint(db: AsyncSession = Depends(get_db_async)):
-            ...
+            # Your code here
+            pass
     """
     async with AsyncSessionLocal() as session:
         try:
             yield session
         finally:
             await session.close()
+
+
+# ============================================================
+# Logging
+# ============================================================
+
+logger.info("✅ Database configuration loaded successfully")
+logger.info(f"   Sync engine: {type(sync_engine).__name__}")
+logger.info(f"   Async engine: {type(async_engine).__name__}")
