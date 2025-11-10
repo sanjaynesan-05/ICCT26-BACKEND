@@ -15,7 +15,7 @@ main_router = APIRouter()
 # Include sub-routers
 main_router.include_router(health_router, tags=["Health & Status"])
 main_router.include_router(team_router, tags=["Team Registration"])
-main_router.include_router(registration_router, tags=["Registration"])
+main_router.include_router(registration_router, prefix="/api", tags=["Registration"])
 main_router.include_router(admin_router, prefix="/admin", tags=["Admin Panel"])
 
 __all__ = ["main_router"]
