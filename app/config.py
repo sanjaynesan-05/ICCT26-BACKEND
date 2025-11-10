@@ -102,6 +102,18 @@ class Settings:
     EMAIL_FROM_ADDRESS: str = SMTP_FROM_EMAIL
     EMAIL_FROM_NAME: str = SMTP_FROM_NAME
     
+    # File Upload Configuration
+    MAX_FILE_SIZE_MB: int = 5  # 5MB limit for uploaded files
+    MAX_BASE64_SIZE_CHARS: int = MAX_FILE_SIZE_MB * 1024 * 1024 * 4 // 3  # ~6.7M characters
+    
+    # File Type Validation (MIME types)
+    ALLOWED_IMAGE_TYPES: List[str] = [
+        'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'
+    ]
+    ALLOWED_DOCUMENT_TYPES: List[str] = [
+        'application/pdf'
+    ]
+    
     class Config:
         """Pydantic config"""
         case_sensitive = True
