@@ -3,10 +3,11 @@ Admin routes - Admin panel endpoints for team and player management
 """
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi.responses import JSONResponse
 import logging
 
-from database import get_db
+from database import get_db_async
 from app.services import DatabaseService
 
 logger = logging.getLogger(__name__)
@@ -14,7 +15,7 @@ router = APIRouter()
 
 
 @router.get("/teams")
-def get_all_teams(db: Session = Depends(get_db)):
+async def get_all_teams(db: AsyncSession = Depends(get_db_async)):
     """
     Get all registered teams with player count.
     
@@ -26,16 +27,16 @@ def get_all_teams(db: Session = Depends(get_db)):
     - Payment receipt status
     """
     try:
-        teams = DatabaseService.get_all_teams(db)
-        return {"success": True, "teams": teams}
+        teams = await DatabaseService.get_all_teams(db)
+        return JSONResponse(content={"success": True, "teams": teams})
 
     except Exception as e:
-        logger.error(f"Error fetching teams: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception(f"Error fetching teams: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal Server Error")
 
 
 @router.get("/teams/{team_id}")
-def get_team_details(team_id: str, db: Session = Depends(get_db)):
+async def get_team_details(team_id: str, db: AsyncSession = Depends(get_db_async)):
     """
     Get detailed information about a specific team and its player roster.
 
@@ -47,22 +48,22 @@ def get_team_details(team_id: str, db: Session = Depends(get_db)):
     - Complete player roster with all details
     """
     try:
-        team_data = DatabaseService.get_team_details(db, team_id)
+        team_data = await DatabaseService.get_team_details(db, team_id)
 
         if not team_data:
             raise HTTPException(status_code=404, detail="Team not found")
 
-        return team_data
+        return JSONResponse(content=team_data)
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error fetching team details: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception(f"Error fetching team details: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal Server Error")
 
 
 @router.get("/players/{player_id}")
-def get_player_details(player_id: int, db: Session = Depends(get_db)):
+async def get_player_details(player_id: int, db: AsyncSession = Depends(get_db_async)):
     """
     Fetch details of a specific player with team context.
 
@@ -74,15 +75,15 @@ def get_player_details(player_id: int, db: Session = Depends(get_db)):
     - Team information (Team ID, Name, Church)
     """
     try:
-        player_data = DatabaseService.get_player_details(db, player_id)
+        player_data = await DatabaseService.get_player_details(db, player_id)
 
         if not player_data:
             raise HTTPException(status_code=404, detail="Player not found")
 
-        return player_data
+        return JSONResponse(content=player_data)
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error fetching player details: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception(f"Error fetching player details: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal Server Error")

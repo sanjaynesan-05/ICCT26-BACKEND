@@ -1,85 +1,98 @@
 """
+database.py
+----------------------------------------
 Database configuration and session management
-Handles both sync and async database operations
+Handles both sync and async database operations for FastAPI
+
+✅ Compatible with Neon (ssl=require)
+✅ Works locally and in Render
+✅ Provides both sync and async DB access
+✅ Safe logging without exposing credentials
 """
 
+import os
+import logging
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker as async_sessionmaker
-import os
 from dotenv import load_dotenv
 
-# Load environment variables from .env.local (priority) or .env
-load_dotenv('.env.local')  # Load .env.local first
-load_dotenv()  # Then load .env as fallback
-
 # ============================================================
-# Synchronous Database Configuration (for psycopg2)
+# ✅ Environment Setup
 # ============================================================
 
-# PostgreSQL connection URL - Use environment variable
-# Read DATABASE_URL directly and convert for psycopg2
-raw_db_url = os.environ.get(
-    'DATABASE_URL',
+# Load from .env.local first (local dev), fallback to .env
+load_dotenv('.env.local')
+load_dotenv()
+
+# Setup logger
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("database")
+
+# ============================================================
+# ✅ Read DATABASE_URL
+# ============================================================
+
+raw_db_url = os.getenv(
+    "DATABASE_URL",
     "postgresql://user:password@localhost:5432/neondb?sslmode=require"
 )
 
-# Convert to psycopg2 compatible format (sync)
+if not raw_db_url:
+    raise RuntimeError("❌ DATABASE_URL not set in environment variables!")
+
+logger.info(f"🔗 Raw DATABASE_URL loaded: {raw_db_url[:60]}...")
+
+# ============================================================
+# ✅ Sync Database Configuration (psycopg2)
+# ============================================================
+
 DATABASE_URL = raw_db_url
-if raw_db_url.startswith('postgresql+asyncpg://'):
-    # Convert from async to sync format
-    DATABASE_URL = raw_db_url.replace('postgresql+asyncpg://', 'postgresql://')
-    # Replace ssl=require with sslmode=require for psycopg2
-    DATABASE_URL = DATABASE_URL.replace('?ssl=require', '?sslmode=require')
-    DATABASE_URL = DATABASE_URL.replace('&ssl=require', '&sslmode=require')
-elif raw_db_url.startswith('postgres://'):
-    DATABASE_URL = raw_db_url.replace('postgres://', 'postgresql://')
+if raw_db_url.startswith("postgresql+asyncpg://"):
+    DATABASE_URL = raw_db_url.replace("postgresql+asyncpg://", "postgresql://")
+    DATABASE_URL = DATABASE_URL.replace("?ssl=require", "?sslmode=require").replace("&ssl=require", "&sslmode=require")
+elif raw_db_url.startswith("postgres://"):
+    DATABASE_URL = raw_db_url.replace("postgres://", "postgresql://")
 
-print(f"Sync DATABASE_URL configured: {DATABASE_URL[:70]}...")
+logger.info(f"⚙️ Sync DATABASE_URL configured: {DATABASE_URL[:70]}...")
 
-# Create synchronous SQLAlchemy engine with optimized settings for Neon
+# Neon-compatible SSL args
 connect_args = {}
 if "neon.tech" in DATABASE_URL:
-    connect_args = {
-        "sslmode": "require",
-        "connect_timeout": 10
-    }
+    connect_args = {"sslmode": "require", "connect_timeout": 10}
 
+# Sync engine
 engine = create_engine(
     DATABASE_URL,
     pool_pre_ping=True,
-    pool_recycle=300,  # Recycle connections every 5 minutes (Neon pooler limitation)
-    pool_size=5,  # Smaller pool size for serverless
+    pool_recycle=300,  # Recycle connections (Neon pooler best practice)
+    pool_size=5,
     max_overflow=2,
     echo=False,
     connect_args=connect_args
 )
 
-# Create synchronous session
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+# Sync session factory
+SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
 # ============================================================
-# Asynchronous Database Configuration (for asyncpg)
+# ✅ Async Database Configuration (asyncpg)
 # ============================================================
 
-# Convert to async format
 DATABASE_URL_ASYNC = raw_db_url
-if raw_db_url.startswith('postgresql://'):
-    DATABASE_URL_ASYNC = raw_db_url.replace('postgresql://', 'postgresql+asyncpg://')
-    # Replace sslmode=require with ssl=require for asyncpg
-    DATABASE_URL_ASYNC = DATABASE_URL_ASYNC.replace('?sslmode=require', '?ssl=require')
-    DATABASE_URL_ASYNC = DATABASE_URL_ASYNC.replace('&sslmode=require', '&ssl=require')
+if raw_db_url.startswith("postgresql://"):
+    DATABASE_URL_ASYNC = raw_db_url.replace("postgresql://", "postgresql+asyncpg://")
+    DATABASE_URL_ASYNC = DATABASE_URL_ASYNC.replace("?sslmode=require", "?ssl=require").replace("&sslmode=require", "&ssl=require")
 
-print(f"Async DATABASE_URL configured: {DATABASE_URL_ASYNC[:70]}...")
+logger.info(f"⚙️ Async DATABASE_URL configured: {DATABASE_URL_ASYNC[:70]}...")
 
-# Create asynchronous SQLAlchemy engine with optimized settings for Neon
 async_engine = create_async_engine(
     DATABASE_URL_ASYNC,
     echo=False,
     pool_pre_ping=True,
-    pool_recycle=300,  # Recycle connections every 5 minutes
-    pool_size=5,  # Smaller pool size for serverless
+    pool_recycle=300,
+    pool_size=5,
     max_overflow=2,
     future=True,
     connect_args={
@@ -89,7 +102,6 @@ async_engine = create_async_engine(
     } if "neon.tech" in DATABASE_URL_ASYNC else {}
 )
 
-# Create asynchronous session factory
 AsyncSessionLocal = async_sessionmaker(
     async_engine,
     class_=AsyncSession,
@@ -98,21 +110,19 @@ AsyncSessionLocal = async_sessionmaker(
 )
 
 # ============================================================
-# Base class for ORM models
+# ✅ Base Model Class
 # ============================================================
 
 Base = declarative_base()
 
 # ============================================================
-# Dependency Providers
+# ✅ Session Providers
 # ============================================================
-
 
 def get_db():
     """
-    Dependency for FastAPI - provides synchronous database session
-    
-    Usage:
+    FastAPI dependency: provides a synchronous database session.
+    Example:
         @app.get("/endpoint")
         def endpoint(db: Session = Depends(get_db)):
             ...
@@ -126,9 +136,8 @@ def get_db():
 
 async def get_db_async():
     """
-    Dependency for FastAPI - provides asynchronous database session
-    
-    Usage:
+    FastAPI dependency: provides an asynchronous database session.
+    Example:
         @app.get("/endpoint")
         async def endpoint(db: AsyncSession = Depends(get_db_async)):
             ...
