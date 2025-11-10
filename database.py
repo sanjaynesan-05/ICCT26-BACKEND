@@ -22,7 +22,7 @@ load_dotenv()  # Then load .env as fallback
 # Read DATABASE_URL directly and convert for psycopg2
 raw_db_url = os.environ.get(
     'DATABASE_URL',
-    "postgresql://neondb_owner:npg_3ON2HQpSvJBT@ep-winter-salad-ad6doxno-pooler.c-2.us-east-1.aws.neon.tech/neondb?ssl=require"
+    "postgresql://user:password@localhost:5432/neondb?sslmode=require"
 )
 
 # Convert to psycopg2 compatible format (sync)

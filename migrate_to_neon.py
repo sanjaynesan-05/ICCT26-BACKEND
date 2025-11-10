@@ -8,15 +8,32 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 import sys
+import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv('.env.local')
+load_dotenv()
 
 # Import models and Base
 from models import Team, Player, Base
 
-# Neon Database Connection String
-NEON_DATABASE_URL = "postgresql://neondb_owner:npg_3ON2HQpSvJBT@ep-winter-salad-ad6doxno-pooler.c-2.us-east-1.aws.neon.tech/neondb?sslmode=require"
+# Neon Database Connection String - Get from environment variables
+NEON_DATABASE_URL = os.environ.get(
+    'DATABASE_URL',
+    'postgresql://{user}:{password}@ep-winter-salad-ad6doxno-pooler.c-2.us-east-1.aws.neon.tech/neondb?sslmode=require'
+)
+
+# Convert for sync if needed
+if NEON_DATABASE_URL.startswith('postgresql+asyncpg://'):
+    NEON_DATABASE_URL = NEON_DATABASE_URL.replace('postgresql+asyncpg://', 'postgresql://')
+    NEON_DATABASE_URL = NEON_DATABASE_URL.replace('?ssl=require', '?sslmode=require')
 
 # Async version for asyncpg
-NEON_DATABASE_URL_ASYNC = "postgresql+asyncpg://neondb_owner:npg_3ON2HQpSvJBT@ep-winter-salad-ad6doxno-pooler.c-2.us-east-1.aws.neon.tech/neondb?sslmode=require"
+NEON_DATABASE_URL_ASYNC = NEON_DATABASE_URL
+if NEON_DATABASE_URL.startswith('postgresql://'):
+    NEON_DATABASE_URL_ASYNC = NEON_DATABASE_URL.replace('postgresql://', 'postgresql+asyncpg://')
+    NEON_DATABASE_URL_ASYNC = NEON_DATABASE_URL_ASYNC.replace('?sslmode=require', '?ssl=require')
 
 
 def create_tables_sync():

@@ -40,10 +40,12 @@
 
 ### Configuration Updates
 
-#### **.env.local**
+#### **.env.local** (Secure Configuration)
 ```bash
 # Neon Cloud Production Database
-DATABASE_URL=postgresql+asyncpg://neondb_owner:npg_3ON2HQpSvJBT@ep-winter-salad-ad6doxno-pooler.c-2.us-east-1.aws.neon.tech/neondb?ssl=require
+# NOTE: Store actual credentials in .env.local (not committed to git)
+# Use environment variables for deployment
+DATABASE_URL=postgresql+asyncpg://{username}:{password}@ep-winter-salad-ad6doxno-pooler.c-2.us-east-1.aws.neon.tech/neondb?ssl=require
 ```
 
 #### **database.py** Updates
@@ -130,22 +132,22 @@ DATABASE_URL=postgresql+asyncpg://neondb_owner:npg_3ON2HQpSvJBT@ep-winter-salad-
 
 ### Deployment Configuration
 
-For hosting platforms (Render, Railway, Vercel, etc.), set:
+For hosting platforms (Render, Railway, Vercel, etc.), set environment variables:
 
 ```bash
-# Environment Variables
-DATABASE_URL=postgresql+asyncpg://neondb_owner:npg_3ON2HQpSvJBT@ep-winter-salad-ad6doxno-pooler.c-2.us-east-1.aws.neon.tech/neondb?ssl=require
+# Database (use Neon connection string - do NOT hardcode)
+DATABASE_URL=postgresql+asyncpg://{username}:{password}@{neon-host}/neondb?ssl=require
 
 PORT=8000
 ENVIRONMENT=production
 DEBUG=False
 
-# SMTP Configuration
+# Email Configuration (use secure environment variables)
 SMTP_SERVER=smtp.gmail.com
 SMTP_PORT=587
-SMTP_USERNAME=sanjaynesan007@gmail.com
-SMTP_PASSWORD=capblszgvdjcrwyd
-SMTP_FROM_EMAIL=sanjaynesan007@gmail.com
+SMTP_USERNAME={your-email@gmail.com}
+SMTP_PASSWORD={app-specific-password}
+SMTP_FROM_EMAIL={your-email@gmail.com}
 SMTP_FROM_NAME=ICCT26 TEAM
 ```
 
