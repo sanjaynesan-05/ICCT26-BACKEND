@@ -49,34 +49,34 @@ logger.info(f"🚀 Initializing FastAPI application ({ENVIRONMENT})")
 # -----------------------
 # CORS Middleware - MUST be added BEFORE any routes
 # -----------------------
-cors_origins = settings.CORS_ORIGINS.copy()
-
-# Add Render URL in production if not already there
-if IS_PRODUCTION and "https://icct26-backend.onrender.com" not in cors_origins:
-    cors_origins.append("https://icct26-backend.onrender.com")
-
-# Add Netlify URL if not already there
-if "https://icct26.netlify.app" not in cors_origins:
-    cors_origins.append("https://icct26.netlify.app")
+# ✅ Allow Netlify frontend and local dev
+origins = [
+    "https://icct26.netlify.app",
+    "https://www.icct26.netlify.app",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173"
+]
 
 # Log CORS configuration
 logger.info("=" * 70)
 logger.info("📡 CORS CONFIGURATION")
 logger.info("=" * 70)
-logger.info(f"✅ Allowed Origins ({len(cors_origins)}):")
-for origin in sorted(cors_origins):
+logger.info(f"✅ Allowed Origins ({len(origins)}):")
+for origin in sorted(origins):
     logger.info(f"   • {origin}")
-logger.info(f"✅ Allowed Methods: {', '.join(settings.CORS_METHODS)}")
-logger.info(f"✅ Allowed Headers: {settings.CORS_HEADERS}")
-logger.info(f"✅ Credentials: {settings.CORS_CREDENTIALS}")
+logger.info(f"✅ Allowed Methods: * (GET, POST, PUT, DELETE, OPTIONS, etc.)")
+logger.info(f"✅ Allowed Headers: * (all headers)")
+logger.info(f"✅ Expose Headers: * (all headers)")
+logger.info(f"✅ Credentials: True")
 logger.info("=" * 70)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=cors_origins,
-    allow_credentials=settings.CORS_CREDENTIALS,
-    allow_methods=settings.CORS_METHODS,
-    allow_headers=settings.CORS_HEADERS,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],      # allow all methods (GET, POST, etc.)
+    allow_headers=["*"],      # allow all headers
+    expose_headers=["*"]      # allows frontend to read headers
 )
 
 logger.info("✅ CORS Middleware configured and loaded")
