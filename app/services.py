@@ -218,11 +218,12 @@ class DatabaseService:
         registration: TeamRegistration,
         team_id: str
     ) -> int:
-        """Save team registration to database"""
+        """Save team registration to database with retry logic for Neon timeouts"""
         
         try:
-            # Import models
+            # Import models and retry utilities
             from models import Team, Player
+            from app.db_utils import safe_commit
             
             # Create team record with all information
             team_db = Team(
@@ -260,13 +261,14 @@ class DatabaseService:
                 )
                 session.add(player_db)
             
-            await session.commit()
-            logger.info(f"Registration saved to database with Team ID: {team_id}")
+            # 🔥 Use retry logic for commit (handles Neon timeouts)
+            await safe_commit(session, max_retries=3)
+            logger.info(f"✅ Registration saved to database with Team ID: {team_id}")
             return team_db.id
             
         except Exception as e:
             await session.rollback()
-            logger.error(f"Failed to save registration: {str(e)}")
+            logger.error(f"❌ Failed to save registration: {str(e)}")
             raise
 
     @staticmethod

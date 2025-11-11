@@ -3,6 +3,7 @@ ICCT26 Cricket Tournament Registration API
 Main FastAPI application entry point
 """
 
+import asyncio
 import logging
 import os
 import time
@@ -12,11 +13,11 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text, Column, Integer, String, Text, DateTime, ForeignKey
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import sessionmaker as async_sessionmaker
 
-from app.config import settings, get_async_database_url
+from app.config import settings, get_async_database_url, get_async_engine
 from app.routes import main_router
 
 # -----------------------
@@ -110,10 +111,10 @@ async def log_request_middleware(request: Request, call_next):
         raise
 
 # -----------------------
-# Async DB config
+# Async DB config (Neon-optimized)
 # -----------------------
 DATABASE_URL_ASYNC = get_async_database_url()
-async_engine = create_async_engine(DATABASE_URL_ASYNC, echo=settings.DATABASE_ECHO)
+async_engine = get_async_engine()  # 🔥 Uses optimized engine with timeouts, SSL, and pool settings
 AsyncSessionLocal = async_sessionmaker(
     async_engine,
     class_=AsyncSession,
@@ -185,16 +186,47 @@ def _get_sync_engine():
             logger.warning("No sync engine available in database.py (sync table creation will be skipped).")
             return None
 
+
+# -----------------------
+# Neon DB Keep-Alive Task
+# -----------------------
+async def keep_neon_awake():
+    """
+    Background task that pings Neon database every 10 minutes.
+    Prevents Neon from idling and causing cold-start delays.
+    This task starts on app startup and runs indefinitely.
+    """
+    ping_interval = 600  # 10 minutes
+    logger.info("🌙 Starting Neon keep-alive background task (pings every 10 min)")
+    
+    while True:
+        try:
+            await asyncio.sleep(ping_interval)
+            async with async_engine.connect() as conn:
+                await conn.execute(text("SELECT 1"))
+            logger.info("🌙 Neon DB pinged to stay awake")
+        except Exception as e:
+            logger.warning(f"⚠️ Neon keep-alive ping failed: {e}")
+            # Don't crash the app, just log and continue
+
 # -----------------------
 # Startup & Shutdown events
 # -----------------------
 @app.on_event("startup")
 async def startup_event():
-    """Initialize async metadata and ensure sync tables exist (if sync engine available)"""
+    """Initialize async metadata, ensure sync tables exist, and warm up Neon DB"""
     try:
         async with async_engine.begin() as conn:
             await conn.run_sync(AsyncBase.metadata.create_all)
         logger.info("✅ Database tables initialized (async)")
+        
+        # 🔥 Warm up Neon by pinging it early
+        try:
+            async with async_engine.connect() as conn:
+                await conn.execute(text("SELECT 1"))
+            logger.info("🌡️ Neon database warmed up successfully (connection established)")
+        except Exception as warmup_err:
+            logger.warning(f"⚠️ Neon warmup ping failed: {warmup_err}")
 
         sync_engine = _get_sync_engine()
         if sync_engine is not None:
@@ -244,6 +276,9 @@ async def startup_event():
     except Exception as e:
         logger.warning(f"[WARNING] Database initialization warning: {e}")
         logger.warning("   Make sure PostgreSQL is running and DATABASE_URL is correct")
+    
+    # 🌙 Start background task to keep Neon awake
+    asyncio.create_task(keep_neon_awake())
 
 @app.on_event("shutdown")
 async def shutdown_event():
@@ -297,10 +332,24 @@ async def root():
 # -----------------------
 @app.get("/health", tags=["Health"])
 async def health_check():
+    """
+    Health check that pings Neon DB to prevent idle sleep.
+    Returns database connection status.
+    """
     logger.info("🏥 GET /health - Health check called")
+    
+    db_status = "unknown"
+    try:
+        async with async_engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+        db_status = "connected"
+    except Exception as e:
+        logger.warning(f"Database ping failed: {e}")
+        db_status = "error"
+    
     return {
-        "status": "healthy",
-        "message": "API is operational",
+        "status": "healthy" if db_status == "connected" else "degraded",
+        "database_status": db_status,
         "timestamp": datetime.now().isoformat(),
         "environment": ENVIRONMENT,
     }

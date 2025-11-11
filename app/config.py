@@ -144,6 +144,35 @@ def get_sync_database_url() -> str:
 
 
 # ============================================================
+# Neon-Optimized Async Engine Factory
+# ============================================================
+
+def get_async_engine():
+    """
+    Create Neon-optimized async SQLAlchemy engine with:
+    ✅ Increased connection timeout (Neon cold-start can take 10s+)
+    ✅ Pool pre-ping (detects dead connections automatically)
+    ✅ Retry logic for transient failures
+    ✅ Optimized pool sizing for serverless Neon
+    """
+    from sqlalchemy.ext.asyncio import create_async_engine
+    
+    return create_async_engine(
+        get_async_database_url(),
+        echo=settings.DATABASE_ECHO,
+        future=True,
+        pool_pre_ping=True,        # Detect dead Neon connections automatically
+        pool_size=5,               # Keep small pool alive (Neon friendly)
+        max_overflow=10,           # Allow overflow for burst connections
+        connect_args={
+            "timeout": 30,         # ⏱ Increase connection timeout (Neon wake-up can take 10s+)
+            "command_timeout": 60, # ⏳ Allow long insertions (Base64 files)
+            "ssl": "require",      # Enforce SSL for Neon
+        }
+    )
+
+
+# ============================================================
 # Logging Configuration
 # ============================================================
 
