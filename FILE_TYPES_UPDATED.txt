@@ -1,0 +1,191 @@
+╔════════════════════════════════════════════════════════════════════════════╗
+║                      FILE UPLOAD RESTRICTIONS UPDATED                      ║
+║                                                                            ║
+║              JPEG, PNG, and PDF ONLY - ALL FILE FIELDS                    ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CHANGES MADE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+File Modified: app/schemas_team.py
+
+✓ Updated MIME type restrictions
+✓ Created unified file validation
+✓ All 4 file fields now accept: JPEG, PNG, PDF
+✓ Magic byte verification for all files
+✓ Removed support for: GIF, WebP, JXL
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ALLOWED FILE TYPES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+All file fields now accept ONLY:
+
+✅ JPEG
+   - Extension: .jpg, .jpeg
+   - MIME type: image/jpeg
+   - Magic bytes: FF D8 FF
+   - Field support: All (pastorLetter, paymentReceipt, aadharFile, subscriptionFile)
+
+✅ PNG
+   - Extension: .png
+   - MIME type: image/png
+   - Magic bytes: 89 50 4E 47 0D 0A 1A 0A
+   - Field support: All (pastorLetter, paymentReceipt, aadharFile, subscriptionFile)
+
+✅ PDF
+   - Extension: .pdf
+   - MIME type: application/pdf
+   - Magic bytes: 25 50 44 46 2D (starts with "%PDF-")
+   - Field support: All (pastorLetter, paymentReceipt, aadharFile, subscriptionFile)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+FILE FIELDS AFFECTED
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Team Level:
+  ✓ pastorLetter      → JPEG, PNG, PDF
+  ✓ paymentReceipt    → JPEG, PNG, PDF
+
+Player Level:
+  ✓ aadharFile        → JPEG, PNG, PDF
+  ✓ subscriptionFile  → JPEG, PNG, PDF
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+REMOVED FILE TYPES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+❌ GIF (.gif)       - No longer supported
+❌ WebP (.webp)     - No longer supported
+❌ JXL (.jxl)       - No longer supported
+
+Users will now receive validation errors if they try to upload these formats.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+VALIDATION FLOW
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+For each file upload:
+
+1. Extract Base64 from Data URI (if present)
+   data:image/jpeg;base64,<base64_data> → <base64_data>
+
+2. Check MIME type against allowed list
+   JPEG, PNG, PDF ✓
+   Others → Validation Error ✗
+
+3. Validate Base64 encoding
+   Ensure valid Base64 format ✓
+
+4. Check file size limit
+   Maximum 5MB per file ✓
+
+5. Verify magic bytes (file signature)
+   JPEG: FF D8 FF ✓
+   PNG: 89 50 4E 47 0D 0A 1A 0A ✓
+   PDF: 25 50 44 46 2D ✓
+   Others → Validation Error ✗
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ERROR MESSAGES (EXAMPLES)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+If user uploads GIF:
+  Error: pastorLetter must be JPEG (.jpg), PNG (.png), or PDF (.pdf) only. 
+         File signature does not match valid formats.
+
+If user uploads WebP:
+  Error: paymentReceipt MIME type 'image/webp' not allowed. 
+         Allowed types: JPEG, PNG, PDF only
+
+If file is corrupted:
+  Error: aadharFile: Invalid Base64 data: Incorrect padding
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TEST RESULTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Executed: test_file_restrictions.py
+
+✓ Test 1: Valid JPEG for pastorLetter       → PASS
+✓ Test 2: Valid PNG for paymentReceipt      → PASS
+✓ Test 3: Valid PDF for aadharFile          → PASS
+✓ Test 4: Valid PDF for subscriptionFile    → PASS
+✓ Test 5: Invalid GIF format (rejected)     → PASS
+✓ Test 6: All valid files together          → PASS
+
+Result: 6/6 PASSED (100%)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+FRONTEND IMPACT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Update frontend file input to ONLY accept:
+  - *.jpg
+  - *.jpeg
+  - *.png
+  - *.pdf
+
+HTML Example:
+  <input 
+    type="file" 
+    accept=".jpg,.jpeg,.png,.pdf" 
+    onChange={handleFileUpload}
+  />
+
+React Validation:
+  const validExtensions = ['.jpg', '.jpeg', '.png', '.pdf'];
+  
+  const handleFileUpload = (file) => {
+    const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
+    if (!validExtensions.includes(ext)) {
+      setError('Only JPEG, PNG, and PDF files are allowed');
+      return;
+    }
+    // ... proceed with upload
+  };
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+COMPATIBILITY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✓ Backward Compatible: Yes (stricter validation)
+✓ Breaking Changes: None for JPEG/PNG/PDF users
+✗ Breaking Changes: GIF, WebP, JXL users will get validation errors
+
+Migration Path:
+  - Existing JPEG/PNG/PDF registrations: No changes needed
+  - Users with GIF/WebP/JXL: Need to convert to JPEG/PNG/PDF
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+DEPLOYMENT NOTES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✓ No database schema changes needed
+✓ No environment variable changes needed
+✓ No new dependencies required
+✓ Backward compatible for existing data
+✓ Ready to deploy immediately
+
+Steps to deploy:
+1. Run: python test_file_restrictions.py (verify tests pass)
+2. Commit changes to GitHub
+3. Deploy to Render.com
+4. Update frontend file input accept attribute
+5. Test with JPEG/PNG/PDF files
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SUMMARY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✅ File upload restrictions successfully updated
+✅ All 4 file fields now accept ONLY: JPEG, PNG, PDF
+✅ Magic byte verification enforces actual file types
+✅ Validation tested and working (6/6 tests passing)
+✅ Ready for production deployment
+✅ Frontend updates needed (accept attribute)
+
+Status: READY TO DEPLOY ✓
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

@@ -3,10 +3,10 @@ Pydantic schemas for team registration matching frontend JSON structure.
 Accepts both camelCase (frontend) and snake_case (raw/postman) inputs via aliases.
 
 File Validation:
-- Images (pastorLetter, paymentReceipt): JPEG, PNG, GIF, WebP, JXL
-- Documents (aadharFile, subscriptionFile): PDF only
+- All Files (pastorLetter, paymentReceipt, aadharFile, subscriptionFile): JPEG, PNG, PDF ONLY
 - Size limit: 5MB per file (configurable)
 - Base64 format required with data:mime/type; prefix
+- Magic byte verification for file type validation
 """
 
 from pydantic import BaseModel, Field, EmailStr, field_validator, ConfigDict
@@ -15,9 +15,8 @@ from datetime import datetime
 import base64
 from app.config import settings
 
-# Allowed MIME types for different file types
-ALLOWED_IMAGE_MIMES = ["image/jpeg", "image/png", "image/gif", "image/webp", "image/jxl"]
-ALLOWED_DOCUMENT_MIMES = ["application/pdf"]
+# Allowed MIME types - JPEG, PNG, and PDF ONLY for all file uploads
+ALLOWED_FILE_MIMES = ["image/jpeg", "image/png", "application/pdf"]
 
 
 # ============================================================
@@ -125,25 +124,32 @@ class TeamRegistrationRequest(BaseModel):
     # Accept list length 1..15 (for testing keep 1 allowed). If you want enforce 11, change min_length to 11.
     players: List[PlayerInfo] = Field(..., min_length=1, max_length=15, description="List of players", alias="players")
 
-    # File validation for images (pastor letter and payment receipt)
+    # File validation for all files (pastor letter, payment receipt, aadhar, subscription)
     @field_validator('pastorLetter', 'paymentReceipt')
     @classmethod
-    def validate_image_file(cls, v: Optional[str]) -> Optional[str]:
+    def validate_team_files(cls, v: Optional[str]) -> Optional[str]:
         """
-        Validate image files (Base64 encoded with data URI format)
+        Validate files for team (Base64 encoded with data URI format)
         
-        Accepts formats:
+        Accepts:
         - data:image/jpeg;base64,<base64_data>
         - data:image/png;base64,<base64_data>
-        - data:image/gif;base64,<base64_data>
-        - data:image/webp;base64,<base64_data>
-        - data:image/jxl;base64,<base64_data>
+        - data:application/pdf;base64,<base64_data>
         
         Also accepts raw Base64 without data URI prefix for backward compatibility
         """
         if v is None:
             return v
         
+        return cls._validate_generic_file(v, 'Pastor Letter/Payment Receipt')
+    
+    @staticmethod
+    def _validate_generic_file(file_data: str, field_name: str) -> str:
+        """
+        Generic file validation for JPEG, PNG, and PDF only
+        Returns original value (with or without data URI prefix)
+        """
+        v = file_data
         original_value = v
         
         # Extract Base64 data from data URI if present
@@ -153,96 +159,10 @@ class TeamRegistrationRequest(BaseModel):
                 mime_type = header.split(";")[0][5:]  # Extract mime type
                 
                 # Validate MIME type
-                if mime_type not in ALLOWED_IMAGE_MIMES:
-                    raise ValueError(
-                        f"Image MIME type '{mime_type}' not allowed. "
-                        f"Allowed types: {', '.join(ALLOWED_IMAGE_MIMES)}"
-                    )
-                
-                v = b64_data
-            except (IndexError, ValueError) as e:
-                raise ValueError(f"Invalid data URI format: {str(e)}")
-        
-        # Check file size limit
-        if len(v) > settings.MAX_BASE64_SIZE_CHARS:
-            max_mb = settings.MAX_FILE_SIZE_MB
-            raise ValueError(
-                f"File too large. Size: {len(v)} chars. Maximum: {settings.MAX_BASE64_SIZE_CHARS} chars (~{max_mb}MB)"
-            )
-        
-        # Validate Base64 format
-        try:
-            decoded_data = base64.b64decode(v, validate=True)
-        except Exception as e:
-            raise ValueError(f"Invalid Base64 data: {str(e)}")
-        
-        # Validate image file signature (magic bytes)
-        if not cls._is_valid_image(decoded_data):
-            raise ValueError(
-                "File must be a valid image. "
-                "Accepted formats: JPEG (.jpg), PNG (.png), GIF (.gif), WebP (.webp), JXL (.jxl)"
-            )
-        
-        # Return original value (with or without data URI prefix)
-        return original_value
-    
-    @staticmethod
-    def _is_valid_image(data: bytes) -> bool:
-        """Check if data is a valid image based on file signatures (magic bytes)"""
-        signatures = [
-            (b'\xff\xd8\xff', "JPEG"),
-            (b'\x89PNG\r\n\x1a\n', "PNG"),
-            (b'GIF8', "GIF"),
-            (b'RIFF', "WebP"),  # WebP starts with RIFF
-            (b'\x00\x00\x00\x0cJXL\x20', "JXL"),
-        ]
-        
-        for sig, fmt in signatures:
-            if data.startswith(sig):
-                return True
-        
-        return False
-
-    # File validation for PDF documents (aadhar and subscription files)
-    @field_validator('players')
-    @classmethod
-    def validate_player_files(cls, v: List[PlayerInfo]) -> List[PlayerInfo]:
-        """
-        Validate PDF files in player data.
-        
-        Accepts:
-        - data:application/pdf;base64,<base64_data>
-        - Raw Base64 without data URI prefix for backward compatibility
-        
-        All PDFs must start with %PDF- header
-        """
-        for player in v:
-            # Validate aadhar file
-            if player.aadharFile:
-                cls._validate_pdf_file(player.aadharFile, 'aadharFile')
-            
-            # Validate subscription file
-            if player.subscriptionFile:
-                cls._validate_pdf_file(player.subscriptionFile, 'subscriptionFile')
-        
-        return v
-    
-    @staticmethod
-    def _validate_pdf_file(file_data: str, field_name: str) -> None:
-        """Helper method to validate PDF files with data URI and raw Base64 support"""
-        v = file_data
-        
-        # Extract Base64 data from data URI if present
-        if v.startswith("data:"):
-            try:
-                header, b64_data = v.split(",", 1)
-                mime_type = header.split(";")[0][5:]  # Extract mime type
-                
-                # Validate MIME type
-                if mime_type not in ALLOWED_DOCUMENT_MIMES:
+                if mime_type not in ALLOWED_FILE_MIMES:
                     raise ValueError(
                         f"{field_name} MIME type '{mime_type}' not allowed. "
-                        f"Allowed types: {', '.join(ALLOWED_DOCUMENT_MIMES)}"
+                        f"Allowed types: JPEG, PNG, PDF only"
                     )
                 
                 v = b64_data
@@ -253,19 +173,63 @@ class TeamRegistrationRequest(BaseModel):
         if len(v) > settings.MAX_BASE64_SIZE_CHARS:
             max_mb = settings.MAX_FILE_SIZE_MB
             raise ValueError(
-                f'{field_name} too large. Size: {len(v)} chars. '
-                f'Maximum: {settings.MAX_BASE64_SIZE_CHARS} chars (~{max_mb}MB)'
+                f"{field_name} too large. Size: {len(v)} chars. Maximum: {settings.MAX_BASE64_SIZE_CHARS} chars (~{max_mb}MB)"
             )
         
         # Validate Base64 format
         try:
             decoded_data = base64.b64decode(v, validate=True)
         except Exception as e:
-            raise ValueError(f'{field_name}: Invalid Base64 data: {str(e)}')
+            raise ValueError(f"{field_name}: Invalid Base64 data: {str(e)}")
         
-        # Validate it's actually a PDF
-        if not decoded_data.startswith(b'%PDF-'):
-            raise ValueError(f'{field_name} must be a valid PDF document (must start with %PDF-)')
+        # Validate file signature (magic bytes) - JPEG, PNG, or PDF only
+        if not TeamRegistrationRequest._is_valid_file_signature(decoded_data):
+            raise ValueError(
+                f"{field_name} must be JPEG (.jpg), PNG (.png), or PDF (.pdf) only. "
+                "File signature does not match valid formats."
+            )
+        
+        # Return original value (with or without data URI prefix)
+        return original_value
+    
+    @staticmethod
+    def _is_valid_file_signature(data: bytes) -> bool:
+        """Check if data is JPEG, PNG, or PDF based on file signatures (magic bytes)"""
+        signatures = [
+            b'\xff\xd8\xff',  # JPEG
+            b'\x89PNG\r\n\x1a\n',  # PNG
+            b'%PDF-',  # PDF
+        ]
+        
+        for sig in signatures:
+            if data.startswith(sig):
+                return True
+        
+        return False
+
+    # File validation for PDF documents (aadhar and subscription files)
+    @field_validator('players')
+    @classmethod
+    def validate_player_files(cls, v: List[PlayerInfo]) -> List[PlayerInfo]:
+        """
+        Validate files in player data (JPEG, PNG, or PDF only).
+        
+        Accepts:
+        - data:image/jpeg;base64,<base64_data>
+        - data:image/png;base64,<base64_data>
+        - data:application/pdf;base64,<base64_data>
+        - Raw Base64 without data URI prefix for backward compatibility
+        """
+        for player in v:
+            # Validate aadhar file
+            if player.aadharFile:
+                TeamRegistrationRequest._validate_generic_file(player.aadharFile, 'aadharFile')
+            
+            # Validate subscription file
+            if player.subscriptionFile:
+                TeamRegistrationRequest._validate_generic_file(player.subscriptionFile, 'subscriptionFile')
+        
+        return v
 
 
 # ============================================================
