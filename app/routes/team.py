@@ -211,6 +211,8 @@ async def get_team_details(
                     "email": team.vice_captain_email,
                     "whatsapp": team.vice_captain_whatsapp,
                 },
+                "pastor_letter": team.pastor_letter,        # Base64 image
+                "payment_receipt": team.payment_receipt,    # Base64 image
                 "registration_date": team.registration_date.isoformat() if team.registration_date else None,
             },
             "players": [
@@ -220,6 +222,8 @@ async def get_team_details(
                     "age": p.age,
                     "phone": p.phone,
                     "role": p.role,
+                    "aadhar_file": p.aadhar_file,              # Base64 PDF
+                    "subscription_file": p.subscription_file,  # Base64 PDF
                 } for p in players
             ]
         }

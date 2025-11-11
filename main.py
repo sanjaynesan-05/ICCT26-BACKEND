@@ -8,6 +8,7 @@ import os
 import time
 from datetime import datetime
 from fastapi import FastAPI, HTTPException, Request, status
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text, Column, Integer, String, Text, DateTime, ForeignKey
@@ -553,7 +554,7 @@ def create_tables():
 
 
 # -----------------------
-# Exception handler (returns JSONResponse)
+# Exception handlers (return JSONResponse)
 # -----------------------
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
@@ -564,6 +565,56 @@ async def http_exception_handler(request: Request, exc: HTTPException):
         "status_code": exc.status_code
     }
     return JSONResponse(status_code=exc.status_code, content=payload)
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """
+    Custom Pydantic validation error handler.
+    Returns user-friendly JSON instead of FastAPI's default verbose format.
+    """
+    # Extract first error for simpler message
+    errors = exc.errors()
+    first_error = errors[0] if errors else {}
+    
+    # Build user-friendly error message
+    field_path = " -> ".join(str(loc) for loc in first_error.get("loc", []))
+    error_msg = first_error.get("msg", "Validation error")
+    error_type = first_error.get("type", "value_error")
+    
+    # Log full error details for debugging
+    logger.error(f"Validation error on {request.url.path}: {errors}")
+    
+    # Sanitize errors for JSON serialization (remove non-serializable objects)
+    def sanitize_error(err):
+        """Remove non-JSON-serializable objects from error dict"""
+        clean = {}
+        for key, value in err.items():
+            if key == "ctx" and isinstance(value, dict):
+                # Sanitize ctx field
+                clean[key] = {k: str(v) if not isinstance(v, (str, int, float, bool, list, dict, type(None))) else v 
+                              for k, v in value.items()}
+            elif isinstance(value, (str, int, float, bool, list, dict, type(None))):
+                clean[key] = value
+            elif isinstance(value, tuple):
+                clean[key] = list(value)
+            else:
+                clean[key] = str(value)
+        return clean
+    
+    sanitized_errors = [sanitize_error(err) for err in errors]
+    
+    # Return simplified error response
+    payload = {
+        "success": False,
+        "message": f"Validation failed: {error_msg}",
+        "field": field_path,
+        "error_type": error_type,
+        "details": sanitized_errors if len(sanitized_errors) <= 5 else sanitized_errors[:5],  # Limit to 5 errors
+        "status_code": 422
+    }
+    
+    return JSONResponse(status_code=422, content=payload)
 
 
 # -----------------------
