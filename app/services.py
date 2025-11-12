@@ -279,7 +279,7 @@ class DatabaseService:
         try:
             query = text("""
                 SELECT t.id, t.team_id, t.team_name, t.church_name, 
-                       t.payment_receipt, t.created_at,
+                       t.payment_receipt, t.pastor_letter, t.created_at,
                        t.captain_name, t.captain_phone, t.captain_email,
                        t.vice_captain_name, t.vice_captain_phone, t.vice_captain_email,
                        COUNT(p.id) as player_count
@@ -306,7 +306,8 @@ class DatabaseService:
                     "viceCaptainEmail": row["vice_captain_email"],
                     "playerCount": row["player_count"],
                     "registrationDate": str(row["created_at"]) if row["created_at"] else None,
-                    "paymentReceipt": row["payment_receipt"]
+                    "paymentReceipt": row["payment_receipt"],
+                    "pastorLetter": row["pastor_letter"]
                 })
             
             logger.info(f"Found {len(teams)} teams")
@@ -323,7 +324,7 @@ class DatabaseService:
         logger.info(f"Fetching team details for team_id: {team_id}")
         try:
             team_query = text("""
-                SELECT id, team_id, team_name, church_name, payment_receipt, created_at,
+                SELECT id, team_id, team_name, church_name, payment_receipt, pastor_letter, created_at,
                        captain_name, captain_phone, captain_email,
                        vice_captain_name, vice_captain_phone, vice_captain_email
                 FROM teams
@@ -339,7 +340,8 @@ class DatabaseService:
             
             # Get players for this team
             players_query = text("""
-                SELECT id, player_id, name, age, phone, email, role, jersey_number
+                SELECT id, player_id, name, age, phone, email, role, jersey_number,
+                       aadhar_file, subscription_file
                 FROM players
                 WHERE team_id = :team_id
                 ORDER BY id
@@ -365,6 +367,7 @@ class DatabaseService:
                         "email": team_data["vice_captain_email"]
                     } if team_data["vice_captain_name"] else None,
                     "paymentReceipt": team_data["payment_receipt"],
+                    "pastorLetter": team_data["pastor_letter"],
                     "registrationDate": str(team_data["created_at"]) if team_data["created_at"] else None
                 },
                 "players": [
@@ -375,7 +378,9 @@ class DatabaseService:
                         "phone": p["phone"],
                         "email": p["email"],
                         "role": p["role"],
-                        "jerseyNumber": p["jersey_number"]
+                        "jerseyNumber": p["jersey_number"],
+                        "aadharFile": p["aadhar_file"],
+                        "subscriptionFile": p["subscription_file"]
                     } for p in players_data
                 ]
             }
