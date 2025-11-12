@@ -132,6 +132,13 @@ async def register_team(
             player_id = f"{team_id}-P{idx:02d}"
             # Use provided jersey_number or auto-assign from position
             jersey_num = player_data.jersey_number if player_data.jersey_number else str(idx)
+            
+            # DEBUG: Log the jersey_number source
+            if player_data.jersey_number:
+                logger.debug(f"  Player {idx}: Using FRONTEND jersey_number: {player_data.jersey_number}")
+            else:
+                logger.debug(f"  Player {idx}: AUTO-ASSIGNING jersey_number: {jersey_num}")
+            
             player = Player(
                 player_id=player_id,
                 team_id=team_id,
@@ -143,11 +150,20 @@ async def register_team(
                 aadhar_file=player_data.aadharFile,
                 subscription_file=player_data.subscriptionFile
             )
+            
+            # Verify player object has jersey_number before adding
+            logger.debug(f"  Player object created: ID={player.player_id}, Jersey={player.jersey_number}")
+            
             players_list.append(player)
-            logger.debug(f"  Player {idx}: {player_id} - {player_data.name} ({player_data.role}) Jersey: {jersey_num}")
+            logger.info(f"  ✅ Player {idx}: {player_id} - {player_data.name} ({player_data.role}) Jersey: {jersey_num}")
         
         db.add_all(players_list)
-        logger.info(f"✅ {len(players_list)} player records created")
+        logger.info(f"✅ {len(players_list)} player records created and queued")
+        
+        # Verify all players have jersey_number before commit
+        logger.info(f"🔍 Jersey verification before commit:")
+        for p in players_list:
+            logger.info(f"   - {p.player_id}: jersey_number = {p.jersey_number} (type: {type(p.jersey_number).__name__})")
 
         # Commit to database (with retry logic from db_utils)
         from app.db_utils import safe_commit
