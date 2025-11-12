@@ -16,6 +16,7 @@ from sqlalchemy import select, func
 from database import get_db_async
 from models import Team, Player
 from app.schemas_team import TeamRegistrationRequest, TeamRegistrationResponse, ErrorResponse
+from app.utils import retry_db_operation
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +82,7 @@ async def save_base64_file(
         500: {"model": ErrorResponse},
     }
 )
+@retry_db_operation(retries=3, delay=2)
 async def register_team(
     request: TeamRegistrationRequest,
     session: AsyncSession = Depends(get_db_async)

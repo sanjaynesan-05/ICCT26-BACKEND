@@ -11,6 +11,7 @@ from datetime import datetime
 import logging
 
 from app.schemas_team import TeamRegistrationRequest
+from app.utils import retry_db_operation
 from models import Team, Player
 from database import get_db_async
 
@@ -19,6 +20,7 @@ router = APIRouter()
 
 
 @router.post("/register/team", status_code=201)
+@retry_db_operation(retries=3, delay=2)
 async def register_team(
     registration: TeamRegistrationRequest,
     db: AsyncSession = Depends(get_db_async)
