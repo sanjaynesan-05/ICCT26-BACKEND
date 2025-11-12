@@ -130,14 +130,16 @@ async def register_team(
         players_list = []
         for idx, player_data in enumerate(registration.players, 1):
             player_id = f"{team_id}-P{idx:02d}"
-            # Use provided jersey_number or auto-assign from position
+            
+            # ✅ ALWAYS ASSIGN: jersey_number auto-assigned based on position (1, 2, 3...)
+            # Uses provided value only if it exists and is truthy, otherwise uses position
             jersey_num = player_data.jersey_number if player_data.jersey_number else str(idx)
             
             # DEBUG: Log the jersey_number source
             if player_data.jersey_number:
-                logger.debug(f"  Player {idx}: Using FRONTEND jersey_number: {player_data.jersey_number}")
+                logger.info(f"  Player {idx}: Using FRONTEND jersey_number: {player_data.jersey_number}")
             else:
-                logger.debug(f"  Player {idx}: AUTO-ASSIGNING jersey_number: {jersey_num}")
+                logger.info(f"  Player {idx}: AUTO-ASSIGNING jersey_number from position: {jersey_num}")
             
             player = Player(
                 player_id=player_id,
@@ -146,18 +148,19 @@ async def register_team(
                 age=player_data.age,
                 phone=player_data.phone,
                 role=player_data.role,
-                jersey_number=jersey_num,
+                jersey_number=jersey_num,  # ✅ GUARANTEED to have a value
                 aadhar_file=player_data.aadharFile,
                 subscription_file=player_data.subscriptionFile
             )
             
             # Verify player object has jersey_number before adding
-            logger.debug(f"  Player object created: ID={player.player_id}, Jersey={player.jersey_number}")
+            logger.info(f"  ✅ Player object created: ID={player.player_id}, Name={player.name}, Jersey={player.jersey_number}")
             
             players_list.append(player)
-            logger.info(f"  ✅ Player {idx}: {player_id} - {player_data.name} ({player_data.role}) Jersey: {jersey_num}")
+            logger.info(f"  ✅ Player {idx}/{len(registration.players)}: {player_id} - {player_data.name} ({player_data.role}) Jersey: {jersey_num}")
         
         db.add_all(players_list)
+        logger.info(f"✅ {len(players_list)} player records queued for database insert")
         logger.info(f"✅ {len(players_list)} player records created and queued")
         
         # Verify all players have jersey_number before commit
