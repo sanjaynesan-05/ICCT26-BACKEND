@@ -150,10 +150,19 @@ class TeamRegistrationRequest(BaseModel):
     def _validate_generic_file(file_data: str, field_name: str) -> str:
         """
         Generic file validation for JPEG, PNG, and PDF only
+        WITH AUTO-CORRECTION for missing Base64 padding
+        
+        Accepts:
+        - data:mime/type;base64,<base64_data> (with or without padding)
+        - Raw Base64 (with or without padding)
+        
+        Auto-fixes missing padding before validation.
         Returns original value (with or without data URI prefix)
         """
         v = file_data
         original_value = v
+        b64_data = v
+        mime_type = None
         
         # Extract Base64 data from data URI if present
         if v.startswith("data:"):
@@ -167,21 +176,22 @@ class TeamRegistrationRequest(BaseModel):
                         f"{field_name} MIME type '{mime_type}' not allowed. "
                         f"Allowed types: JPEG, PNG, PDF only"
                     )
-                
-                v = b64_data
             except (IndexError, ValueError) as e:
                 raise ValueError(f"{field_name}: Invalid data URI format: {str(e)}")
         
-        # Check file size limit
-        if len(v) > settings.MAX_BASE64_SIZE_CHARS:
+        # Check file size limit (before padding correction)
+        if len(b64_data) > settings.MAX_BASE64_SIZE_CHARS:
             max_mb = settings.MAX_FILE_SIZE_MB
             raise ValueError(
-                f"{field_name} too large. Size: {len(v)} chars. Maximum: {settings.MAX_BASE64_SIZE_CHARS} chars (~{max_mb}MB)"
+                f"{field_name} too large. Size: {len(b64_data)} chars. Maximum: {settings.MAX_BASE64_SIZE_CHARS} chars (~{max_mb}MB)"
             )
+        
+        # ✅ AUTO-FIX: Correct missing Base64 padding
+        b64_data_fixed = TeamRegistrationRequest._fix_base64_padding(b64_data)
         
         # Validate Base64 format
         try:
-            decoded_data = base64.b64decode(v, validate=True)
+            decoded_data = base64.b64decode(b64_data_fixed, validate=True)
         except Exception as e:
             raise ValueError(f"{field_name}: Invalid Base64 data: {str(e)}")
         
@@ -194,6 +204,30 @@ class TeamRegistrationRequest(BaseModel):
         
         # Return original value (with or without data URI prefix)
         return original_value
+    
+    @staticmethod
+    def _fix_base64_padding(b64_str: str) -> str:
+        """
+        Auto-fix missing Base64 padding.
+        
+        Base64 requires string length to be a multiple of 4.
+        This function adds missing = padding characters.
+        
+        Examples:
+        - "abc" → "abc=" (1 char missing)
+        - "ab" → "ab==" (2 chars missing)
+        - "abcd" → "abcd" (no padding needed)
+        
+        Args:
+            b64_str: Base64 string (possibly without padding)
+        
+        Returns:
+            Base64 string with correct padding
+        """
+        padding_needed = len(b64_str) % 4
+        if padding_needed:
+            b64_str += "=" * (4 - padding_needed)
+        return b64_str
     
     @staticmethod
     def _is_valid_file_signature(data: bytes) -> bool:
