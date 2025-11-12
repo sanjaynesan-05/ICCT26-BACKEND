@@ -15,6 +15,7 @@ import logging
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from sqlalchemy.pool import NullPool
 from dotenv import load_dotenv
 
 # ============================================================
@@ -121,15 +122,13 @@ logger.info(f"⚙️  Async URL: {ASYNC_DATABASE_URL[:60]}...")
 async_engine = create_async_engine(
     ASYNC_DATABASE_URL,
     echo=False,
-    pool_pre_ping=True,
-    pool_recycle=300,
-    pool_size=5,
-    max_overflow=2,
+    poolclass=NullPool,  # ✅ CRITICAL: Fresh connection for each request (prevents Neon "connection closed" errors)
+    pool_pre_ping=True,   # ✅ Validates connection alive before use
     future=True,
     connect_args={
         "server_settings": {"application_name": "icct26_backend"},
-        "timeout": 10,
-    } if "neon.tech" in ASYNC_DATABASE_URL else {}
+        "timeout": 30,     # ✅ Increased from 10s to 30s for cold-start
+    }
 )
 
 AsyncSessionLocal = async_sessionmaker(
