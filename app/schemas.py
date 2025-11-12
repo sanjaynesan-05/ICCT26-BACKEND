@@ -73,6 +73,37 @@ class PlayerDetails(BaseModel):
     })
 
 
+class PlayerCreate(BaseModel):
+    """
+    Player creation schema with exact database column names.
+    Used for bulk insert and ORM operations.
+    All fields match Player model column names exactly (snake_case).
+    """
+    player_id: str = Field(..., description="Unique player ID (e.g., ICCT26-...-P01)")
+    team_id: str = Field(..., description="Team ID reference")
+    name: str = Field(..., min_length=1, max_length=150, description="Player full name")
+    age: int = Field(..., ge=15, le=65, description="Player age")
+    phone: str = Field(..., min_length=7, max_length=15, description="Player phone (max 15 chars)")
+    role: str = Field(..., min_length=1, max_length=20, description="Player role (max 20 chars)")
+    jersey_number: str = Field(..., min_length=1, max_length=3, description="Jersey number (1-3 chars)")
+    aadhar_file: Optional[str] = Field(None, description="Aadhar file (base64 encoded)")
+    subscription_file: Optional[str] = Field(None, description="Subscription file (base64 encoded)")
+
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "player_id": "ICCT26-20251112120000-P01",
+            "team_id": "ICCT26-20251112120000",
+            "name": "Rajesh Kumar",
+            "age": 25,
+            "phone": "9876543210",
+            "role": "Batsman",
+            "jersey_number": "1",
+            "aadhar_file": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQ...",
+            "subscription_file": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQ..."
+        }
+    })
+
+
 class CaptainInfo(BaseModel):
     """Captain information schema"""
     
