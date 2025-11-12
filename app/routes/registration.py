@@ -6,6 +6,7 @@ Handles team and player registration with async database operations
 from fastapi import APIRouter, HTTPException, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError, DataError
 from datetime import datetime
 import logging
 
@@ -129,6 +130,8 @@ async def register_team(
         players_list = []
         for idx, player_data in enumerate(registration.players, 1):
             player_id = f"{team_id}-P{idx:02d}"
+            # Use provided jersey_number or auto-assign from position
+            jersey_num = player_data.jersey_number if player_data.jersey_number else str(idx)
             player = Player(
                 player_id=player_id,
                 team_id=team_id,
@@ -136,12 +139,12 @@ async def register_team(
                 age=player_data.age,
                 phone=player_data.phone,
                 role=player_data.role,
-                jersey_number=str(idx),
+                jersey_number=jersey_num,
                 aadhar_file=player_data.aadharFile,
                 subscription_file=player_data.subscriptionFile
             )
             players_list.append(player)
-            logger.debug(f"  Player {idx}: {player_id} - {player_data.name} ({player_data.role})")
+            logger.debug(f"  Player {idx}: {player_id} - {player_data.name} ({player_data.role}) Jersey: {jersey_num}")
         
         db.add_all(players_list)
         logger.info(f"✅ {len(players_list)} player records created")
@@ -177,6 +180,43 @@ async def register_team(
     except HTTPException:
         # Re-raise HTTP exceptions as-is
         raise
+    
+    except IntegrityError as e:
+        # Database integrity constraint violation (null, unique, etc.)
+        logger.error(f"❌ Integrity error: {str(e.orig)}")
+        await db.rollback()
+        # Check what field failed
+        error_msg = str(e.orig).lower()
+        if "jersey_number" in error_msg:
+            detail_msg = "Jersey number is required or invalid. Backend auto-assigns if omitted."
+        elif "not null" in error_msg:
+            detail_msg = "A required field is missing or null"
+        elif "unique" in error_msg:
+            detail_msg = "Duplicate entry (team_id or player_id already exists)"
+        else:
+            detail_msg = f"Database constraint violation: {str(e.orig)}"
+        
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "success": False,
+                "message": detail_msg,
+                "error": str(e.orig)
+            }
+        )
+    
+    except DataError as e:
+        # Data too long, invalid data type, etc.
+        logger.error(f"❌ Data error: {str(e.orig)}")
+        await db.rollback()
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "success": False,
+                "message": f"Invalid data format or field too long: {str(e.orig)}",
+                "error": str(e.orig)
+            }
+        )
     
     except ValueError as e:
         # Validation errors
