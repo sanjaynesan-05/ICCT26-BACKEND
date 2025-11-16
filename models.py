@@ -35,6 +35,7 @@ class Team(Base):
     # File uploads (Base64 - Text for unlimited size)
     payment_receipt = Column(Text, nullable=True)
     pastor_letter = Column(Text, nullable=True)
+    group_photo = Column(Text, nullable=True)  # Team group photo (Base64)
 
     # Timestamps with server defaults
     registration_date = Column(DateTime, nullable=False, default=func.now(), server_default=func.now())

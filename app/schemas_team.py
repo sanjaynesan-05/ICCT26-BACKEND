@@ -120,6 +120,7 @@ class TeamRegistrationRequest(BaseModel):
 
     pastorLetter: Optional[str] = Field(None, description="Pastor letter as base64 or filename", alias="pastor_letter")
     paymentReceipt: Optional[str] = Field(None, description="Payment receipt as base64 or filename", alias="payment_receipt")
+    groupPhoto: Optional[str] = Field(None, description="Team group photo as base64", alias="group_photo")
 
     captain: CaptainInfo = Field(..., description="Captain information", alias="captain")
     viceCaptain: ViceCaptainInfo = Field(..., description="Vice-captain information", alias="viceCaptain")
@@ -127,8 +128,8 @@ class TeamRegistrationRequest(BaseModel):
     # Accept list length 1..15 (for testing keep 1 allowed). If you want enforce 11, change min_length to 11.
     players: List[PlayerInfo] = Field(..., min_length=1, max_length=15, description="List of players", alias="players")
 
-    # File validation for all files (pastor letter, payment receipt, aadhar, subscription)
-    @field_validator('pastorLetter', 'paymentReceipt')
+    # File validation for all files (pastor letter, payment receipt, group photo)
+    @field_validator('pastorLetter', 'paymentReceipt', 'groupPhoto')
     @classmethod
     def validate_team_files(cls, v: Optional[str]) -> Optional[str]:
         """

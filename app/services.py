@@ -237,7 +237,8 @@ class DatabaseService:
                 vice_captain_email=registration.viceCaptain.email,
                 vice_captain_whatsapp=registration.viceCaptain.whatsapp,
                 payment_receipt=registration.paymentReceipt,
-                pastor_letter=registration.pastorLetter
+                pastor_letter=registration.pastorLetter,
+                group_photo=registration.groupPhoto
             )
             session.add(team_db)
             await session.flush()
@@ -273,7 +274,7 @@ class DatabaseService:
         try:
             query = text("""
                 SELECT t.id, t.team_id, t.team_name, t.church_name, 
-                       t.payment_receipt, t.pastor_letter, t.created_at,
+                       t.payment_receipt, t.pastor_letter, t.group_photo, t.created_at,
                        t.captain_name, t.captain_phone, t.captain_email,
                        t.vice_captain_name, t.vice_captain_phone, t.vice_captain_email,
                        COUNT(p.id) as player_count
@@ -301,7 +302,8 @@ class DatabaseService:
                     "playerCount": row["player_count"],
                     "registrationDate": str(row["created_at"]) if row["created_at"] else None,
                     "paymentReceipt": row["payment_receipt"],
-                    "pastorLetter": row["pastor_letter"]
+                    "pastorLetter": row["pastor_letter"],
+                    "groupPhoto": row["group_photo"]
                 })
             
             logger.info(f"Found {len(teams)} teams")
@@ -318,7 +320,7 @@ class DatabaseService:
         logger.info(f"Fetching team details for team_id: {team_id}")
         try:
             team_query = text("""
-                SELECT id, team_id, team_name, church_name, payment_receipt, pastor_letter, created_at,
+                SELECT id, team_id, team_name, church_name, payment_receipt, pastor_letter, group_photo, created_at,
                        captain_name, captain_phone, captain_email,
                        vice_captain_name, vice_captain_phone, vice_captain_email
                 FROM teams
@@ -362,6 +364,7 @@ class DatabaseService:
                     } if team_data["vice_captain_name"] else None,
                     "paymentReceipt": team_data["payment_receipt"],
                     "pastorLetter": team_data["pastor_letter"],
+                    "groupPhoto": team_data["group_photo"],
                     "registrationDate": str(team_data["created_at"]) if team_data["created_at"] else None
                 },
                 "players": [
