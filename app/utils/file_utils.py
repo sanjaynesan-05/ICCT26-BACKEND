@@ -127,7 +127,7 @@ def fix_file_fields(team: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     Add correct MIME prefixes for all file fields in team/player dictionaries.
     
     Processes:
-    - Team-level files: payment_receipt (PNG), pastor_letter (PDF)
+    - Team-level files: payment_receipt (PNG), pastor_letter (PDF), group_photo (PNG/JPEG)
     - Player-level files: aadhar_file (PDF), subscription_file (PDF)
     
     Handles nested player arrays and safely processes NULL/missing fields.
@@ -165,6 +165,13 @@ def fix_file_fields(team: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         team["pastor_letter"] = format_base64_uri(
             team["pastor_letter"], 
             "application/pdf"
+        )
+    
+    if "group_photo" in team and team["group_photo"]:
+        # Try to detect if it's PNG or JPEG; default to PNG
+        team["group_photo"] = format_base64_uri(
+            team["group_photo"], 
+            "image/png"
         )
     
     # Player-level files (nested in 'players' array)
