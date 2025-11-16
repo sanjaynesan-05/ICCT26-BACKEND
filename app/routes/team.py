@@ -137,8 +137,6 @@ async def register_team(
                 player_id=player_id,
                 team_id=team_id,
                 name=p.name,
-                age=p.age,
-                phone=p.phone,
                 role=p.role,
                 aadhar_file=aadhar_ref,
                 subscription_file=sub_ref,
@@ -221,8 +219,6 @@ async def get_team_details(
                 {
                     "player_id": p.player_id,
                     "name": p.name,
-                    "age": p.age,
-                    "phone": p.phone,
                     "role": p.role,
                     "aadhar_file": p.aadhar_file,              # Base64 PDF
                     "subscription_file": p.subscription_file,  # Base64 PDF

@@ -83,24 +83,11 @@ class PlayerInfo(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     name: str = Field(..., min_length=1, max_length=150, alias="name")
-    age: int = Field(..., ge=15, le=65, alias="age")
-    phone: str = Field(..., min_length=7, max_length=15, alias="phone")
     role: str = Field(..., min_length=1, max_length=20, alias="role")
-
-    # jersey_number: Optional, backend auto-assigns if missing (1, 2, 3, ...)
-    jersey_number: Optional[str] = Field(None, min_length=1, max_length=3, alias="jersey_number")
 
     # incoming keys: aadharFile (camelCase) OR aadhar_file (snake_case)
     aadharFile: Optional[str] = Field(None, description="Aadhar base64 or filename", alias="aadhar_file")
     subscriptionFile: Optional[str] = Field(None, description="Subscription base64 or filename", alias="subscription_file")
-
-    @field_validator('phone')
-    @classmethod
-    def validate_phone(cls, v: str) -> str:
-        v = v.strip()
-        if not (v.startswith('+') or v.isdigit()):
-            raise ValueError('Phone must be digits or start with +')
-        return v
 
 
 # ============================================================

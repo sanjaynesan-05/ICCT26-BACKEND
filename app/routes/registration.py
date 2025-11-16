@@ -133,42 +133,20 @@ async def register_team(
         for idx, player_data in enumerate(registration.players, 1):
             player_id = f"{team_id}-P{idx:02d}"
             
-            # ✅ ALWAYS ASSIGN: jersey_number auto-assigned based on position (1, 2, 3...)
-            # Uses provided value only if it exists and is truthy, otherwise uses position
-            jersey_num = player_data.jersey_number if player_data.jersey_number else str(idx)
-            
-            # DEBUG: Log the jersey_number source
-            if player_data.jersey_number:
-                logger.info(f"  Player {idx}: Using FRONTEND jersey_number: {player_data.jersey_number}")
-            else:
-                logger.info(f"  Player {idx}: AUTO-ASSIGNING jersey_number from position: {jersey_num}")
-            
             player = Player(
                 player_id=player_id,
                 team_id=team_id,
                 name=player_data.name,
-                age=player_data.age,
-                phone=player_data.phone,
                 role=player_data.role,
-                jersey_number=jersey_num,  # ✅ GUARANTEED to have a value
                 aadhar_file=player_data.aadharFile,
                 subscription_file=player_data.subscriptionFile
             )
             
-            # Verify player object has jersey_number before adding
-            logger.info(f"  ✅ Player object created: ID={player.player_id}, Name={player.name}, Jersey={player.jersey_number}")
-            
             players_list.append(player)
-            logger.info(f"  ✅ Player {idx}/{len(registration.players)}: {player_id} - {player_data.name} ({player_data.role}) Jersey: {jersey_num}")
+            logger.info(f"  ✅ Player {idx}/{len(registration.players)}: {player_id} - {player_data.name} ({player_data.role})")
         
         db.add_all(players_list)
         logger.info(f"✅ {len(players_list)} player records queued for database insert")
-        logger.info(f"✅ {len(players_list)} player records created and queued")
-        
-        # Verify all players have jersey_number before commit
-        logger.info(f"🔍 Jersey verification before commit:")
-        for p in players_list:
-            logger.info(f"   - {p.player_id}: jersey_number = {p.jersey_number} (type: {type(p.jersey_number).__name__})")
 
         # Commit to database (with retry logic from db_utils)
         from app.db_utils import safe_commit
@@ -208,9 +186,7 @@ async def register_team(
         await db.rollback()
         # Check what field failed
         error_msg = str(e.orig).lower()
-        if "jersey_number" in error_msg:
-            detail_msg = "Jersey number is required or invalid. Backend auto-assigns if omitted."
-        elif "not null" in error_msg:
+        if "not null" in error_msg:
             detail_msg = "A required field is missing or null"
         elif "unique" in error_msg:
             detail_msg = "Duplicate entry (team_id or player_id already exists)"
