@@ -49,8 +49,11 @@ Complete guide to all documentation for the ICCT26 Cricket Tournament Registrati
 ### API Documentation
 | Document | Location | Purpose |
 |----------|----------|---------|
-| API_DOCS.md | Root directory | Complete API reference |
+| [COMPLETE_API_ENDPOINTS.md](api-reference/COMPLETE_API_ENDPOINTS.md) | Complete API testing guide | All 11 endpoints with examples |
+| [QUICK_REFERENCE.md](api-reference/QUICK_REFERENCE.md) | API quick reference | Quick lookup for developers |
+| API_DOCS.md | Root directory | General API overview |
 | Swagger UI | http://localhost:8000/docs | Interactive API docs |
+| ReDoc | http://localhost:8000/redoc | Alternative API docs |
 
 ### Project Documentation
 | Document | Location | Purpose |
@@ -164,7 +167,9 @@ tests/test_db.py             # Database connection tests
 → See [SECURITY.md](guides/SECURITY.md)
 
 ### How to... Understand API endpoints?
-→ See [API_DOCS.md](../API_DOCS.md) or http://localhost:8000/docs
+→ See [COMPLETE_API_ENDPOINTS.md](api-reference/COMPLETE_API_ENDPOINTS.md) for full guide  
+→ See [QUICK_REFERENCE.md](api-reference/QUICK_REFERENCE.md) for quick lookup  
+→ Or visit http://localhost:8000/docs for interactive testing
 
 ### How to... Run tests?
 → See tests/ directory and [PROJECT_STRUCTURE.md](../PROJECT_STRUCTURE.md)
