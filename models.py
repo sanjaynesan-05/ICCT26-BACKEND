@@ -35,6 +35,7 @@ class Team(Base):
     # File uploads (Base64 - Text for unlimited size)
     payment_receipt = Column(Text, nullable=True)
     pastor_letter = Column(Text, nullable=True)
+    group_photo = Column(Text, nullable=True)  # Team group photo (Base64)
 
     # Timestamps with server defaults
     registration_date = Column(DateTime, nullable=False, default=func.now(), server_default=func.now())
@@ -72,10 +73,7 @@ class Player(Base):
 
     # Player information
     name = Column(String(100), nullable=False)
-    age = Column(Integer, nullable=False)
-    phone = Column(String(15), nullable=False)
     role = Column(String(20), nullable=False)
-    jersey_number = Column(String(3), nullable=True)  # ✅ NULLABLE: Backend auto-assigns if missing
 
     # File uploads (Base64 - Text for unlimited size)
     aadhar_file = Column(Text, nullable=True)

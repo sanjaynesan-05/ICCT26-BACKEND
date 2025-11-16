@@ -23,20 +23,6 @@ class PlayerDetails(BaseModel):
         max_length=settings.PLAYER_NAME_MAX_LENGTH
     )
     
-    age: int = Field(
-        ...,
-        description="Player age",
-        ge=settings.MIN_PLAYER_AGE,
-        le=settings.MAX_PLAYER_AGE
-    )
-    
-    phone: str = Field(
-        ...,
-        description="Player phone number in E.164 format (e.g., +919876543210)",
-        min_length=settings.PHONE_MIN_LENGTH,
-        max_length=settings.PHONE_MAX_LENGTH
-    )
-    
     role: str = Field(
         ...,
         description=f"Player role - one of {settings.VALID_PLAYER_ROLES}"
@@ -64,8 +50,6 @@ class PlayerDetails(BaseModel):
     model_config = ConfigDict(json_schema_extra={
         "example": {
             "name": "Rajesh Kumar",
-            "age": 25,
-            "phone": "+919876543210",
             "role": "Batsman",
             "aadharFile": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQ...",
             "subscriptionFile": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQ..."
@@ -82,10 +66,7 @@ class PlayerCreate(BaseModel):
     player_id: str = Field(..., description="Unique player ID (e.g., ICCT26-...-P01)")
     team_id: str = Field(..., description="Team ID reference")
     name: str = Field(..., min_length=1, max_length=150, description="Player full name")
-    age: int = Field(..., ge=15, le=65, description="Player age")
-    phone: str = Field(..., min_length=7, max_length=15, description="Player phone (max 15 chars)")
     role: str = Field(..., min_length=1, max_length=20, description="Player role (max 20 chars)")
-    jersey_number: str = Field(..., min_length=1, max_length=3, description="Jersey number (1-3 chars)")
     aadhar_file: Optional[str] = Field(None, description="Aadhar file (base64 encoded)")
     subscription_file: Optional[str] = Field(None, description="Subscription file (base64 encoded)")
 
@@ -94,10 +75,7 @@ class PlayerCreate(BaseModel):
             "player_id": "ICCT26-20251112120000-P01",
             "team_id": "ICCT26-20251112120000",
             "name": "Rajesh Kumar",
-            "age": 25,
-            "phone": "9876543210",
             "role": "Batsman",
-            "jersey_number": "1",
             "aadhar_file": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQ...",
             "subscription_file": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQ..."
         }
