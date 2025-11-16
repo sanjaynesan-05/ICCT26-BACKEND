@@ -20,6 +20,17 @@ from sqlalchemy.orm import sessionmaker as async_sessionmaker
 from app.config import settings, get_async_database_url, get_async_engine
 from app.routes import main_router
 
+# Initialize Cloudinary
+try:
+    import cloudinary_config
+    cloudinary_config.verify_cloudinary_config()
+    logger = logging.getLogger(__name__)
+    logger.info("☁️ Cloudinary initialized successfully")
+except Exception as e:
+    logger = logging.getLogger(__name__)
+    logger.warning(f"⚠️ Cloudinary initialization failed: {str(e)}")
+    logger.warning("⚠️ File uploads will use Base64 fallback mode")
+
 # -----------------------
 # Logging Configuration
 # -----------------------
