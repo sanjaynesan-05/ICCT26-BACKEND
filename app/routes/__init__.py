@@ -4,7 +4,7 @@ Routes package - Contains all API endpoints organized by feature
 
 from fastapi import APIRouter
 
-from app.routes.registration import router as registration_router
+from app.routes.registration_cloudinary import router as registration_router
 from app.routes.admin import router as admin_router
 from app.routes.health import router as health_router
 from app.routes.team import router as team_router
