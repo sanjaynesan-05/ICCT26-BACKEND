@@ -276,10 +276,12 @@ File Sharing: Direct URLs ✅
 
 **Check `.env` file**:
 ```env
-CLOUDINARY_CLOUD_NAME=dplaeuuqk
-CLOUDINARY_API_KEY=389919327783832
-CLOUDINARY_API_SECRET=UYQMNHPP5ieEBA5PO7qK9CsY1zM
+CLOUDINARY_CLOUD_NAME=<your-cloud-name>
+CLOUDINARY_API_KEY=<your-api-key>
+CLOUDINARY_API_SECRET=<your-api-secret>
 ```
+
+⚠️ **Get your credentials from**: https://console.cloudinary.com → Settings → API Keys
 
 Restart backend after fixing.
 

@@ -17,10 +17,14 @@
 Add these environment variables to your deployment platform:
 
 ```env
-CLOUDINARY_CLOUD_NAME=dplaeuuqk
-CLOUDINARY_API_KEY=389919327783832
-CLOUDINARY_API_SECRET=UYQMNHPP5ieEBA5PO7qK9CsY1zM
+CLOUDINARY_CLOUD_NAME=<your-cloud-name>
+CLOUDINARY_API_KEY=<your-api-key>
+CLOUDINARY_API_SECRET=<your-api-secret>
 ```
+
+⚠️ **CRITICAL**: Get real credentials from https://console.cloudinary.com → Settings → API Keys
+
+⚠️ **NEVER** hardcode or commit real API keys!
 
 **Render.com**:
 1. Go to https://dashboard.render.com

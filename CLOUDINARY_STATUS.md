@@ -308,13 +308,15 @@ ICCT26/
 
 ### **Environment Variables** (.env)
 ```env
-CLOUDINARY_CLOUD_NAME=dplaeuuqk
-CLOUDINARY_API_KEY=389919327783832
-CLOUDINARY_API_SECRET=UYQMNHPP5ieEBA5PO7qK9CsY1zM
+CLOUDINARY_CLOUD_NAME=<your-cloud-name>
+CLOUDINARY_API_KEY=<your-api-key>
+CLOUDINARY_API_SECRET=<your-api-secret>
 ```
 
+⚠️ **NEVER commit real credentials!** Get from: https://console.cloudinary.com → Settings → API Keys
+
 ### **Cloudinary Settings**
-- **Cloud Name**: dplaeuuqk
+- **Cloud Name**: `<your-cloud-name>`
 - **Upload Mode**: Secure (HTTPS only)
 - **Resource Type**: Auto-detect (images, PDFs, etc.)
 - **Unique Filename**: Yes (timestamps)
