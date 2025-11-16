@@ -72,10 +72,7 @@ class Player(Base):
 
     # Player information
     name = Column(String(100), nullable=False)
-    age = Column(Integer, nullable=False)
-    phone = Column(String(15), nullable=False)
     role = Column(String(20), nullable=False)
-    jersey_number = Column(String(3), nullable=True)  # ✅ NULLABLE: Backend auto-assigns if missing
 
     # File uploads (Base64 - Text for unlimited size)
     aadhar_file = Column(Text, nullable=True)

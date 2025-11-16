@@ -43,7 +43,6 @@ class EmailService:
             <tr>
                 <td style="padding: 8px; border-bottom: 1px solid #eee;">{idx}</td>
                 <td style="padding: 8px; border-bottom: 1px solid #eee;">{player.name}</td>
-                <td style="padding: 8px; border-bottom: 1px solid #eee;">{player.age}</td>
                 <td style="padding: 8px; border-bottom: 1px solid #eee;">{player.role}</td>
             </tr>
             """
@@ -133,7 +132,6 @@ class EmailService:
                                 <tr>
                                     <th>#</th>
                                     <th>Name</th>
-                                    <th>Age</th>
                                     <th>Role</th>
                                 </tr>
                             </thead>
@@ -251,11 +249,7 @@ class DatabaseService:
                     player_id=player_id,
                     team_id=team_id,
                     name=player.name,
-                    age=player.age,
-                    phone=player.phone,
-                    email=player.email if hasattr(player, 'email') else f"{player.name.lower().replace(' ', '')}@example.com",
                     role=player.role,
-                    jersey_number=str(idx),  # Default jersey number
                     aadhar_file=player.aadharFile,
                     subscription_file=player.subscriptionFile
                 )
@@ -340,7 +334,7 @@ class DatabaseService:
             
             # Get players for this team
             players_query = text("""
-                SELECT id, player_id, name, age, phone, email, role, jersey_number,
+                SELECT id, player_id, name, role,
                        aadhar_file, subscription_file
                 FROM players
                 WHERE team_id = :team_id
@@ -374,11 +368,7 @@ class DatabaseService:
                     {
                         "playerId": p["player_id"],
                         "name": p["name"],
-                        "age": p["age"],
-                        "phone": p["phone"],
-                        "email": p["email"],
                         "role": p["role"],
-                        "jerseyNumber": p["jersey_number"],
                         "aadharFile": p["aadhar_file"],
                         "subscriptionFile": p["subscription_file"]
                     } for p in players_data
@@ -396,7 +386,7 @@ class DatabaseService:
         logger.info(f"Fetching player details for player_id: {player_id}")
         try:
             player_query = text("""
-                SELECT p.id, p.player_id, p.name, p.age, p.phone, p.email, p.role, p.jersey_number,
+                SELECT p.id, p.player_id, p.name, p.role,
                        p.aadhar_file, p.subscription_file,
                        t.team_id, t.team_name, t.church_name
                 FROM players p
@@ -415,11 +405,7 @@ class DatabaseService:
             return {
                 "playerId": player_data["player_id"],
                 "name": player_data["name"],
-                "age": player_data["age"],
-                "phone": player_data["phone"],
-                "email": player_data["email"],
                 "role": player_data["role"],
-                "jerseyNumber": player_data["jersey_number"],
                 "aadharFile": player_data["aadhar_file"],
                 "subscriptionFile": player_data["subscription_file"],
                 "team": {
