@@ -17,9 +17,9 @@ The SMTP email notification system is **fully implemented** and **tested** in yo
 ```env
 SMTP_SERVER=smtp.gmail.com
 SMTP_PORT=587
-SMTP_USERNAME=sanjaynesan007@gmail.com
-SMTP_PASSWORD=capblszgvdjcrwyd (Gmail App Password)
-SMTP_FROM_EMAIL=sanjaynesan007@gmail.com
+SMTP_USERNAME=your-email@gmail.com
+SMTP_PASSWORD=your-app-specific-password
+SMTP_FROM_EMAIL=your-email@gmail.com
 SMTP_FROM_NAME=ICCT26 TEAM
 ```
 ✅ **Status**: Configured and working
@@ -53,7 +53,7 @@ The confirmation email includes:
 ```
 ✅ SMTP Server: smtp.gmail.com:587
 ✅ SMTP Enabled: YES
-✅ Test email sent successfully to: sanjaynesan007@gmail.com
+✅ Test email sent successfully to: your-email@gmail.com
 ```
 
 ### ✅ Test 2: Registration Integration
@@ -258,7 +258,7 @@ python test_email_smtp.py
    ```bash
    python test_email_smtp.py
    ```
-   Expected: Email sent to sanjaynesan007@gmail.com
+   Expected: Email sent to your-email@gmail.com
 
 2. **Test Registration with Email**:
    ```bash
@@ -271,7 +271,7 @@ python test_email_smtp.py
    Expected: Team registered + email sent
 
 3. **Check Email**:
-   - Open Gmail: sanjaynesan007@gmail.com
+   - Open Gmail: your-email@gmail.com
    - Look for: "🏏 Team Registration Confirmed"
    - Verify: Team details, player roster, tournament info
 

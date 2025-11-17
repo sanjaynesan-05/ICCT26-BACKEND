@@ -21,7 +21,7 @@
 
 Your `.env` is already configured for Render:
 ```env
-DATABASE_URL=postgresql+asyncpg://icctadmin:FhfKgVwHX7P7hmObQJFQvN0YBZxYUly7@dpg-d45imk49c44c73c4j4v0-a.oregon-postgres.render.com/icct26_db
+DATABASE_URL=postgresql+asyncpg://your-db-user:your-db-password@your-render-host.oregon-postgres.render.com/icct26_db
 ```
 
 **✅ This is the recommended setup for production deployment!**
@@ -40,12 +40,12 @@ If you want to develop locally with your local database, uncomment this in `.env
 
 ```env
 # Local Development (uncomment to use local PostgreSQL instead of Render)
-DATABASE_URL=postgresql+asyncpg://postgres:icctpg@localhost:5432/icct26_db
+DATABASE_URL=postgresql+asyncpg://postgres:your-db-password@localhost:5432/icct26_db
 ```
 
 Then comment out the Render URL:
 ```env
-# DATABASE_URL=postgresql+asyncpg://icctadmin:FhfKgVwHX7P7hmObQJFQvN0YBZxYUly7@dpg-d45imk49c44c73c4j4v0-a.oregon-postgres.render.com/icct26_db
+# DATABASE_URL=postgresql+asyncpg://your-db-user:your-db-password@your-render-host.oregon-postgres.render.com/icct26_db
 ```
 
 ---
@@ -171,10 +171,10 @@ players
 ## 🔐 Security Notes
 
 ### Credentials in `.env` (SENSITIVE)
-- **Database User**: icctadmin
-- **Database Password**: FhfKgVwHX7P7hmObQJFQvN0YBZxYUly7
-- **Gmail App Password**: capblszgvdjcrwyd
-- **Gmail Username**: sanjaynesan007@gmail.com
+- **Database User**: your-db-user
+- **Database Password**: your-secure-db-password
+- **Gmail App Password**: your-app-specific-password
+- **Gmail Username**: your-email@gmail.com
 
 ⚠️ **IMPORTANT**: 
 - Never commit `.env` to git!
@@ -304,8 +304,8 @@ Frontend and backend are on different domains?
 |----------|-------|---------|
 | `DATABASE_URL` | postgres://... | Database connection |
 | `SMTP_SERVER` | smtp.gmail.com | Email service |
-| `SMTP_USERNAME` | sanjaynesan007@gmail.com | Email login |
-| `SMTP_PASSWORD` | capblszgvdjcrwyd | Email password |
+| `SMTP_USERNAME` | your-email@gmail.com | Email login |
+| `SMTP_PASSWORD` | your-app-specific-password | Email password |
 | `PORT` | 8000 | Server port |
 | `ENVIRONMENT` | production | App environment |
 

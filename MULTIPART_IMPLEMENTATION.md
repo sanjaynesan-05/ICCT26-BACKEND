@@ -28,9 +28,9 @@ Response:
     "team": "Simple Test Team",
     "church": "Simple Test Church",
     "captain": "Simple Captain",
-    "captain_email": "sanjaynesan007@gmail.com",
+    "captain_email": "captain@example.com",
     "vice": "Simple Vice",
-    "vice_email": "vice@test.com",
+    "vice_email": "vice@example.com",
     "files": {
       "pastor_letter": "test.pdf",
       "captain_aadhar": "test.pdf",
