@@ -9,7 +9,8 @@ import logging
 
 from database import get_db_async
 from app.services import DatabaseService
-from app.utils.file_utils import fix_file_fields, fix_player_fields
+from app.utils.file_utils import fix_file_fields, fix_player_fields, clean_file_fields
+from app.utils.file_validation import sanitize_cloudinary_url
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -25,27 +26,29 @@ async def get_all_teams(db: AsyncSession = Depends(get_db_async)):
     - Captain and Vice-Captain details
     - Player count
     - Registration date
-    - Payment receipt and pastor letter (formatted as data URIs)
+    - Payment receipt, pastor letter, and group photo (as valid Cloudinary URLs or empty strings)
+    
+    File Fields Guarantee:
+    - All file fields return VALID Cloudinary URLs or empty strings
+    - No undefined, null, Base64, or malformed values
+    - Admin panel images load smoothly
     """
     logger.info("GET /admin/teams - Fetching all teams...")
     try:
         teams = await DatabaseService.get_all_teams(db)
         
-        # Fix Base64 file fields for each team
+        # Clean file fields: ensure they are valid Cloudinary URLs or empty strings
         for team in teams:
-            team_with_files = {
-                "payment_receipt": team.get("paymentReceipt"),
-                "pastor_letter": team.get("pastorLetter")
-            }
-            fixed = fix_file_fields(team_with_files)
-            team["paymentReceipt"] = fixed.get("payment_receipt")
-            team["pastorLetter"] = fixed.get("pastor_letter")
+            team = clean_file_fields(
+                team,
+                ["paymentReceipt", "pastorLetter", "groupPhoto"]
+            )
         
-        logger.info(f"Successfully fetched {len(teams)} teams")
-        return JSONResponse(content={"success": True, "teams": teams})
+        logger.info(f"✅ Successfully fetched {len(teams)} teams with clean URLs")
+        return JSONResponse(content={"success": True, "data": teams})
 
     except Exception as e:
-        logger.exception(f"Error fetching teams: {str(e)}")
+        logger.exception(f"❌ Error fetching teams: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
 
@@ -55,59 +58,48 @@ async def get_team_details(team_id: str, db: AsyncSession = Depends(get_db_async
     Get detailed information about a specific team and its player roster.
 
     Parameters:
-    - team_id: The unique team identifier (string, e.g., 'ICCT26-0001')
+    - team_id: The unique team identifier (string, e.g., 'TEAM-20251117-ABC12345')
 
     Returns:
     - Team information (ID, Name, Church, Captain, Vice-Captain, etc.)
     - Complete player roster with all details
-    - All file fields formatted as proper data URIs
+    - All file fields as valid Cloudinary URLs or empty strings
+    
+    File Fields Guarantee:
+    - Team files: paymentReceipt, pastorLetter, groupPhoto → valid URLs or empty strings
+    - Player files: aadharFile, subscriptionFile → valid URLs or empty strings
+    - No undefined, null, Base64, or malformed values
     """
     logger.info(f"GET /admin/teams/{team_id} - Fetching team details...")
     try:
         team_data = await DatabaseService.get_team_details(db, team_id)
 
         if not team_data:
-            logger.warning(f"Team not found: {team_id}")
+            logger.warning(f"❌ Team not found: {team_id}")
             raise HTTPException(status_code=404, detail="Team not found")
 
-        # Fix Base64 file fields (add data URI prefixes)
+        # Clean team-level file fields
         if "team" in team_data:
-            # Convert team dict to format expected by fix_file_fields
-            team_with_files = {
-                "payment_receipt": team_data["team"].get("paymentReceipt"),
-                "pastor_letter": team_data["team"].get("pastorLetter"),
-                "players": []
-            }
-            
-            # Add players with file fields
-            if "players" in team_data:
-                for player in team_data["players"]:
-                    team_with_files["players"].append({
-                        **player,
-                        "aadhar_file": player.get("aadharFile"),
-                        "subscription_file": player.get("subscriptionFile")
-                    })
-            
-            # Apply fixes
-            fixed_data = fix_file_fields(team_with_files)
-            
-            # Update original response
-            team_data["team"]["paymentReceipt"] = fixed_data.get("payment_receipt")
-            team_data["team"]["pastorLetter"] = fixed_data.get("pastor_letter")
-            
-            # Update players
-            for i, player in enumerate(team_data.get("players", [])):
-                if i < len(fixed_data["players"]):
-                    player["aadharFile"] = fixed_data["players"][i].get("aadhar_file")
-                    player["subscriptionFile"] = fixed_data["players"][i].get("subscription_file")
+            team_data["team"] = clean_file_fields(
+                team_data["team"],
+                ["paymentReceipt", "pastorLetter", "groupPhoto"]
+            )
+        
+        # Clean player-level file fields
+        if "players" in team_data and isinstance(team_data["players"], list):
+            for player in team_data["players"]:
+                player = clean_file_fields(
+                    player,
+                    ["aadharFile", "subscriptionFile"]
+                )
 
-        logger.info(f"Successfully fetched details for team: {team_id}")
-        return JSONResponse(content=team_data)
+        logger.info(f"✅ Successfully fetched details for team: {team_id}")
+        return JSONResponse(content={"success": True, "data": team_data})
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.exception(f"Error fetching team details: {str(e)}")
+        logger.exception(f"❌ Error fetching team details: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
 
@@ -120,34 +112,33 @@ async def get_player_details(player_id: int, db: AsyncSession = Depends(get_db_a
     - player_id: The unique player identifier (integer ID)
 
     Returns:
-    - Player information (ID, Name, Age, Phone, Role, etc.)
+    - Player information (ID, Name, Role, etc.)
     - Team information (Team ID, Name, Church)
-    - All file fields formatted as proper data URIs
+    - All file fields as valid Cloudinary URLs or empty strings
+    
+    File Fields Guarantee:
+    - Player files: aadharFile, subscriptionFile → valid URLs or empty strings
+    - No undefined, null, Base64, or malformed values
     """
     logger.info(f"GET /admin/players/{player_id} - Fetching player details...")
     try:
         player_data = await DatabaseService.get_player_details(db, player_id)
 
         if not player_data:
-            logger.warning(f"Player not found: {player_id}")
+            logger.warning(f"❌ Player not found: {player_id}")
             raise HTTPException(status_code=404, detail="Player not found")
 
-        # Fix Base64 file fields (add data URI prefixes)
-        player_dict = {
-            "aadhar_file": player_data.get("aadharFile"),
-            "subscription_file": player_data.get("subscriptionFile")
-        }
-        fixed_player = fix_player_fields(player_dict)
-        
-        # Update response
-        player_data["aadharFile"] = fixed_player.get("aadhar_file")
-        player_data["subscriptionFile"] = fixed_player.get("subscription_file")
+        # Clean player file fields
+        player_data = clean_file_fields(
+            player_data,
+            ["aadharFile", "subscriptionFile"]
+        )
 
-        logger.info(f"Successfully fetched player details for ID: {player_id}")
-        return JSONResponse(content=player_data)
+        logger.info(f"✅ Successfully fetched player details for ID: {player_id}")
+        return JSONResponse(content={"success": True, "data": player_data})
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.exception(f"Error fetching player details: {str(e)}")
+        logger.exception(f"❌ Error fetching player details: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal Server Error")

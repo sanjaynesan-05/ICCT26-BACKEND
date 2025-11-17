@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Backend Compatibility Test</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            border-radius: 8px;
+            padding: 30px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #2c3e50;
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 10px;
+        }
+        h2 {
+            color: #34495e;
+            margin-top: 30px;
+        }
+        .test-section {
+            background: #f8f9fa;
+            border-left: 4px solid #3498db;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        .test-result {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+        }
+        .pass {
+            background: #d4edda;
+            border-left: 4px solid #28a745;
+            color: #155724;
+        }
+        .fail {
+            background: #f8d7da;
+            border-left: 4px solid #dc3545;
+            color: #721c24;
+        }
+        .info {
+            background: #d1ecf1;
+            border-left: 4px solid #17a2b8;
+            color: #0c5460;
+        }
+        button {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            font-size: 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background: #2980b9;
+        }
+        button:disabled {
+            background: #95a5a6;
+            cursor: not-allowed;
+        }
+        .summary {
+            background: #e8f4f8;
+            border: 2px solid #3498db;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+        }
+        .code-block {
+            background: #272822;
+            color: #f8f8f2;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+            margin: 10px 0;
+        }
+        .endpoint {
+            font-family: 'Courier New', monospace;
+            background: #f0f0f0;
+            padding: 2px 6px;
+            border-radius: 3px;
+            color: #c7254e;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔗 ICCT26 Backend Compatibility Test</h1>
+        
+        <div class="test-section">
+            <h2>📋 Configuration</h2>
+            <p><strong>Backend URL:</strong> <span id="backendUrl" class="endpoint">http://localhost:8000</span></p>
+            <p><strong>Frontend Origin:</strong> <span id="frontendOrigin" class="endpoint">-</span></p>
+            <p><strong>CORS Status:</strong> <span id="corsStatus">Not tested</span></p>
+        </div>
+
+        <div class="test-section">
+            <h2>🧪 Run Tests</h2>
+            <button onclick="runAllTests()">Run All Tests</button>
+            <button onclick="clearResults()">Clear Results</button>
+        </div>
+
+        <div id="results"></div>
+
+        <div id="summary" style="display: none;" class="summary">
+            <h2>📊 Test Summary</h2>
+            <p><strong>Tests Passed:</strong> <span id="passedCount" style="color: green;">0</span></p>
+            <p><strong>Tests Failed:</strong> <span id="failedCount" style="color: red;">0</span></p>
+            <p><strong>Total Tests:</strong> <span id="totalCount">0</span></p>
+            <div id="finalVerdict"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>📖 Allowed CORS Origins</h2>
+            <p>Your frontend must run on one of these origins:</p>
+            <ul>
+                <li><code>http://localhost:3000</code> (React default)</li>
+                <li><code>http://localhost:5173</code> (Vite default)</li>
+                <li><code>http://127.0.0.1:3000</code></li>
+                <li><code>http://127.0.0.1:5173</code></li>
+                <li><code>https://icct26.netlify.app</code> (Production)</li>
+                <li><code>https://icct26-admin.vercel.app</code> (Admin)</li>
+            </ul>
+        </div>
+
+        <div class="test-section">
+            <h2>🔧 Quick Frontend Integration Code</h2>
+            <p>Copy this code to your frontend to test the registration endpoint:</p>
+            <div class="code-block">
+const testRegistration = async () => {
+  const formData = new FormData();
+  
+  // Required fields
+  formData.append('church_name', 'Test Church');
+  formData.append('team_name', 'Test Warriors');
+  formData.append('captain', 'Test Captain');
+  formData.append('viceCaptain', 'Test Vice');
+  formData.append('contactNumber', '9876543210');
+  formData.append('email', 'test@example.com');
+  
+  // Players (minimum 11)
+  const players = Array.from({length: 11}, (_, i) => ({
+    name: `Player ${i + 1}`,
+    contactNumber: `98765432${10 + i}`,
+    email: `player${i + 1}@example.com`,
+    dateOfBirth: '1995-01-15',
+    jerseyNumber: `${i + 1}`
+  }));
+  formData.append('players', JSON.stringify(players));
+  
+  // Send request
+  const response = await fetch('http://localhost:8000/api/register/team', {
+    method: 'POST',
+    body: formData,
+    credentials: 'include'
+  });
+  
+  const data = await response.json();
+  console.log('Response:', data);
+};
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const BACKEND_URL = 'http://localhost:8000';
+        let testsPassed = 0;
+        let testsFailed = 0;
+
+        // Display current origin
+        document.getElementById('frontendOrigin').textContent = window.location.origin;
+
+        function addResult(testName, passed, details = '') {
+            const resultsDiv = document.getElementById('results');
+            const resultDiv = document.createElement('div');
+            resultDiv.className = `test-result ${passed ? 'pass' : 'fail'}`;
+            resultDiv.innerHTML = `
+                <strong>${passed ? '✅' : '❌'} ${testName}</strong><br>
+                ${details ? `<small>${details}</small>` : ''}
+            `;
+            resultsDiv.appendChild(resultDiv);
+
+            if (passed) testsPassed++;
+            else testsFailed++;
+        }
+
+        function addInfo(message) {
+            const resultsDiv = document.getElementById('results');
+            const infoDiv = document.createElement('div');
+            infoDiv.className = 'test-result info';
+            infoDiv.innerHTML = `<strong>ℹ️ ${message}</strong>`;
+            resultsDiv.appendChild(infoDiv);
+        }
+
+        function clearResults() {
+            document.getElementById('results').innerHTML = '';
+            document.getElementById('summary').style.display = 'none';
+            testsPassed = 0;
+            testsFailed = 0;
+        }
+
+        function showSummary() {
+            document.getElementById('summary').style.display = 'block';
+            document.getElementById('passedCount').textContent = testsPassed;
+            document.getElementById('failedCount').textContent = testsFailed;
+            document.getElementById('totalCount').textContent = testsPassed + testsFailed;
+
+            const verdictDiv = document.getElementById('finalVerdict');
+            if (testsFailed === 0) {
+                verdictDiv.innerHTML = '<p style="color: green; font-weight: bold;">🎉 ALL TESTS PASSED! Your frontend is compatible with the backend.</p>';
+            } else {
+                verdictDiv.innerHTML = '<p style="color: red; font-weight: bold;">⚠️ SOME TESTS FAILED. Check the results above and fix issues.</p>';
+            }
+        }
+
+        async function runAllTests() {
+            clearResults();
+            addInfo('Starting compatibility tests...');
+
+            // Test 1: Health Check
+            addInfo('Test 1: Backend Health Check');
+            try {
+                const response = await fetch(`${BACKEND_URL}/`);
+                const data = await response.json();
+                if (response.ok) {
+                    addResult('Backend Health', true, `Status: ${response.status}, Message: ${data.message}`);
+                } else {
+                    addResult('Backend Health', false, `Status: ${response.status}`);
+                }
+            } catch (error) {
+                addResult('Backend Health', false, `Error: ${error.message}`);
+            }
+
+            // Test 2: CORS Check
+            addInfo('Test 2: CORS Configuration');
+            try {
+                const response = await fetch(`${BACKEND_URL}/`, {
+                    method: 'GET',
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                if (response.ok) {
+                    addResult('CORS Working', true, 'Your origin is allowed');
+                    document.getElementById('corsStatus').textContent = '✅ Allowed';
+                    document.getElementById('corsStatus').style.color = 'green';
+                } else {
+                    addResult('CORS Working', false, 'CORS may not be configured correctly');
+                }
+            } catch (error) {
+                if (error.message.includes('CORS')) {
+                    addResult('CORS Working', false, 'CORS blocked - add your origin to backend allowed origins');
+                    document.getElementById('corsStatus').textContent = '❌ Blocked';
+                    document.getElementById('corsStatus').style.color = 'red';
+                } else {
+                    addResult('CORS Working', false, `Error: ${error.message}`);
+                }
+            }
+
+            // Test 3: API Documentation
+            addInfo('Test 3: API Documentation');
+            try {
+                const response = await fetch(`${BACKEND_URL}/docs`);
+                addResult('API Docs', response.ok, `Status: ${response.status} - Visit ${BACKEND_URL}/docs`);
+            } catch (error) {
+                addResult('API Docs', false, `Error: ${error.message}`);
+            }
+
+            // Test 4: OpenAPI Spec
+            addInfo('Test 4: OpenAPI Specification');
+            try {
+                const response = await fetch(`${BACKEND_URL}/openapi.json`);
+                const data = await response.json();
+                const hasRegistration = '/api/register/team' in (data.paths || {});
+                const hasAdmin = '/admin/teams' in (data.paths || {});
+                addResult('OpenAPI Spec', hasRegistration && hasAdmin, 
+                    `Registration endpoint: ${hasRegistration ? '✅' : '❌'}, Admin endpoint: ${hasAdmin ? '✅' : '❌'}`);
+            } catch (error) {
+                addResult('OpenAPI Spec', false, `Error: ${error.message}`);
+            }
+
+            // Test 5: Admin Teams Endpoint
+            addInfo('Test 5: Admin Endpoints');
+            try {
+                const response = await fetch(`${BACKEND_URL}/admin/teams`);
+                if (response.ok) {
+                    const data = await response.json();
+                    const count = data.data ? data.data.length : 0;
+                    addResult('GET /admin/teams', true, `Status: ${response.status}, Found ${count} teams`);
+                } else if (response.status === 404) {
+                    addResult('GET /admin/teams', true, 'Status: 404 (No teams yet - this is OK)');
+                } else {
+                    addResult('GET /admin/teams', false, `Unexpected status: ${response.status}`);
+                }
+            } catch (error) {
+                addResult('GET /admin/teams', false, `Error: ${error.message}`);
+            }
+
+            // Test 6: Error Handling
+            addInfo('Test 6: Error Handling');
+            try {
+                const response = await fetch(`${BACKEND_URL}/admin/teams/INVALID999`);
+                const data = await response.json();
+                addResult('404 Error Handling', response.status === 404, 
+                    `Status: ${response.status}, Has error message: ${!!data.detail}`);
+            } catch (error) {
+                addResult('404 Error Handling', false, `Error: ${error.message}`);
+            }
+
+            // Test 7: Validation Errors
+            addInfo('Test 7: Validation Error Handling');
+            try {
+                const response = await fetch(`${BACKEND_URL}/api/register/team`, {
+                    method: 'POST',
+                    body: JSON.stringify({}),
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                addResult('422 Validation Errors', response.status === 422, 
+                    `Status: ${response.status} (Expected 422 for missing fields)`);
+            } catch (error) {
+                addResult('422 Validation Errors', false, `Error: ${error.message}`);
+            }
+
+            // Show summary
+            showSummary();
+            addInfo('Tests complete! Check summary below.');
+        }
+
+        // Auto-run tests on page load
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                console.log('🧪 Auto-running compatibility tests...');
+                runAllTests();
+            }, 500);
+        });
+    </script>
+</body>
+</html>

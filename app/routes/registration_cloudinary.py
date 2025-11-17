@@ -8,11 +8,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError, DataError
 from datetime import datetime
+import time
 import logging
 
 from app.schemas_team import TeamRegistrationRequest
 from app.utils import retry_db_operation
-from app.utils.cloudinary_upload import upload_to_cloudinary
+from app.utils.cloudinary_upload import upload_file_to_cloudinary
 from models import Team, Player
 from database import get_db_async
 
@@ -126,27 +127,33 @@ async def register_team(
             # Upload pastor letter
             if registration.pastorLetter:
                 logger.info("  📄 Uploading pastor letter...")
-                pastor_letter_url = upload_to_cloudinary(
-                    registration.pastorLetter, 
-                    f"ICCT26/pastor_letters/{team_id}"
+                public_id = f"{team_id}_pastorLetter_{int(time.time())}"
+                pastor_letter_url = await upload_file_to_cloudinary(
+                    registration.pastorLetter,
+                    folder="icct26/teams/pastorLetters",
+                    public_id=public_id
                 )
                 logger.info(f"  ✅ Pastor letter uploaded: {pastor_letter_url}")
             
             # Upload payment receipt
             if registration.paymentReceipt:
                 logger.info("  💳 Uploading payment receipt...")
-                payment_receipt_url = upload_to_cloudinary(
+                public_id = f"{team_id}_payment_{int(time.time())}"
+                payment_receipt_url = await upload_file_to_cloudinary(
                     registration.paymentReceipt,
-                    f"ICCT26/payment_receipts/{team_id}"
+                    folder="icct26/teams/payments",
+                    public_id=public_id
                 )
                 logger.info(f"  ✅ Payment receipt uploaded: {payment_receipt_url}")
             
             # Upload group photo
             if registration.groupPhoto:
                 logger.info("  📸 Uploading group photo...")
-                group_photo_url = upload_to_cloudinary(
+                public_id = f"{team_id}_groupPhoto_{int(time.time())}"
+                group_photo_url = await upload_file_to_cloudinary(
                     registration.groupPhoto,
-                    f"ICCT26/group_photos/{team_id}"
+                    folder="icct26/teams/groupPhotos",
+                    public_id=public_id
                 )
                 logger.info(f"  ✅ Group photo uploaded: {group_photo_url}")
         
@@ -201,18 +208,22 @@ async def register_team(
                 # Upload Aadhar file
                 if player_data.aadharFile:
                     logger.info(f"  📄 Player {idx}: Uploading Aadhar...")
-                    aadhar_url = upload_to_cloudinary(
+                    public_id = f"{player_id}_aadhar_{int(time.time())}"
+                    aadhar_url = await upload_file_to_cloudinary(
                         player_data.aadharFile,
-                        f"ICCT26/player_aadhar/{team_id}"
+                        folder="icct26/teams/aadhar",
+                        public_id=public_id
                     )
                     logger.info(f"  ✅ Aadhar uploaded: {aadhar_url}")
                 
                 # Upload subscription file
                 if player_data.subscriptionFile:
                     logger.info(f"  📄 Player {idx}: Uploading subscription...")
-                    subscription_url = upload_to_cloudinary(
+                    public_id = f"{player_id}_subscription_{int(time.time())}"
+                    subscription_url = await upload_file_to_cloudinary(
                         player_data.subscriptionFile,
-                        f"ICCT26/player_subscription/{team_id}"
+                        folder="icct26/teams/subscriptions",
+                        public_id=public_id
                     )
                     logger.info(f"  ✅ Subscription uploaded: {subscription_url}")
             
