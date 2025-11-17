@@ -201,6 +201,63 @@ class EmailService:
         except Exception as e:
             logger.error(f"Email error: {str(e)}")
             return {"success": False, "message": str(e)}
+    
+    @staticmethod
+    async def send_email_async_if_available(to_email: str, subject: str, body: str) -> bool:
+        """
+        Send email asynchronously using thread pool executor.
+        
+        Args:
+            to_email: Recipient email address
+            subject: Email subject line
+            body: Email body (plain text or HTML)
+        
+        Returns:
+            bool: True if sent successfully, False otherwise
+        """
+        import asyncio
+        from concurrent.futures import ThreadPoolExecutor
+        
+        def _send_sync():
+            """Synchronous email sending in thread pool"""
+            try:
+                if not settings.SMTP_ENABLED:
+                    logger.warning(f"SMTP not configured. Email not sent to {to_email}")
+                    return False
+                
+                # Create email message
+                msg = MIMEMultipart('alternative')
+                msg['From'] = f"{settings.SMTP_FROM_NAME} <{settings.SMTP_FROM_EMAIL}>"
+                msg['To'] = to_email
+                msg['Subject'] = subject
+                
+                # Attach body as HTML or plain text
+                if '<html>' in body.lower() or '<p>' in body.lower():
+                    msg.attach(MIMEText(body, 'html'))
+                else:
+                    msg.attach(MIMEText(body, 'plain'))
+                
+                # Send email
+                with smtplib.SMTP(settings.SMTP_SERVER, settings.SMTP_PORT) as server:
+                    server.starttls()
+                    server.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
+                    server.send_message(msg)
+                
+                logger.info(f"✅ Email sent successfully to {to_email}")
+                return True
+                
+            except Exception as e:
+                logger.error(f"❌ Email error: {str(e)}")
+                return False
+        
+        try:
+            loop = asyncio.get_event_loop()
+            executor = ThreadPoolExecutor(max_workers=2)
+            result = await loop.run_in_executor(executor, _send_sync)
+            return result
+        except Exception as e:
+            logger.error(f"❌ Async email failed: {e}")
+            return False
 
 
 # ============================================================

@@ -3,7 +3,7 @@ SQLAlchemy ORM models for ICCT26 Cricket Tournament
 Matches PostgreSQL schema on Neon database
 """
 
-from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, func
+from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, func, UniqueConstraint, Index
 from sqlalchemy.orm import relationship
 from database import Base
 
@@ -11,6 +11,12 @@ from database import Base
 class Team(Base):
     """Team model matching PostgreSQL schema exactly"""
     __tablename__ = "teams"
+    
+    __table_args__ = (
+        # Unique constraint to prevent duplicate submissions
+        UniqueConstraint('team_name', 'captain_phone', name='uq_team_name_captain_phone'),
+        Index('idx_team_captain', 'team_name', 'captain_phone'),
+    )
 
     # Primary key
     id = Column(Integer, primary_key=True, index=True)

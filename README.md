@@ -1,27 +1,39 @@
 # ICCT26 Backend API
 
-A modern, production-ready FastAPI backend for managing teams, players, and administrative operations with comprehensive email notification capabilities.
+A modern, **production-hardened** FastAPI backend for managing teams, players, and administrative operations with comprehensive security features, reliability enhancements, and monitoring capabilities.
 
-**Status:** ✅ Production Ready | **Python:** 3.8+ | **Framework:** FastAPI | **Database:** PostgreSQL
+**Status:** ✅ Production Ready (Hardened) | **Python:** 3.8+ | **Framework:** FastAPI | **Database:** PostgreSQL
+
+---
+
+## 🔐 Production Security Features
+
+This backend has been fully hardened for production use with:
+
+✅ **Race-Safe Team IDs** - Database-backed sequential IDs with zero race conditions  
+✅ **Strong Input Validation** - Regex-based validation for all inputs  
+✅ **Duplicate Protection** - Database constraints + idempotency keys  
+✅ **File Security** - 5MB limit, MIME type validation, sanitized filenames  
+✅ **Retry Logic** - Exponential backoff for uploads (3x) and emails (2x)  
+✅ **Structured Logging** - Request ID tracking, JSON logs for monitoring  
+✅ **Unified Errors** - Consistent error codes and response format  
 
 ---
 
 ## 📋 Table of Contents
 
 - [Quick Start](#quick-start)
-- [Project Overview](#project-overview)
-- [Architecture](#architecture)
+- [Production Features](#production-features)
 - [API Endpoints](#api-endpoints)
+- [Security & Validation](#security--validation)
+- [Error Codes](#error-codes)
 - [Installation & Setup](#installation--setup)
 - [Configuration](#configuration)
 - [Running the Application](#running-the-application)
-- [Admin Panel](#admin-panel)
-- [Email Notifications](#email-notifications)
-- [Database Setup](#database-setup)
+- [Testing](#testing)
+- [Monitoring](#monitoring)
 - [Deployment](#deployment)
 - [Documentation](#documentation)
-- [Contributing](#contributing)
-- [Support](#support)
 
 ---
 
@@ -30,6 +42,8 @@ A modern, production-ready FastAPI backend for managing teams, players, and admi
 ### Prerequisites
 - Python 3.8 or higher
 - PostgreSQL 12 or higher
+- Cloudinary account (for file uploads)
+- SMTP credentials (for emails)
 - pip (Python package manager)
 
 ### Installation (5 minutes)
@@ -82,6 +96,323 @@ ICCT26 Backend is a comprehensive REST API that manages:
 ✅ **Security** - Role-based access control, secure credential handling  
 
 ### Key Features
+
+---
+
+## 🔐 Production Features
+
+### 1. Race-Safe Team ID Generation
+
+Sequential team IDs (`ICCT-001`, `ICCT-002`, etc.) with **zero race conditions**:
+
+- Database-backed counter with `SELECT FOR UPDATE` row locking
+- Atomic increment operations in nested transactions
+- Handles concurrent requests safely
+- Max 3 retries on conflict with exponential backoff
+
+**Implementation:** `app/utils/race_safe_team_id.py`
+
+### 2. Strong Input Validation
+
+Comprehensive validation layer for all inputs:
+
+| Field | Rules |
+|-------|-------|
+| **Names** | 3-50 chars, letters/spaces/hyphens/apostrophes only |
+| **Phone** | Exactly 10 digits, numeric |
+| **Email** | RFC 5322 compliant regex |
+| **Team Name** | 3-80 chars |
+| **Files** | Max 5MB, MIME validation (PNG/JPEG/PDF only) |
+
+**Implementation:** `app/utils/validation.py`
+
+### 3. Duplicate Submission Protection
+
+Two-layer defense against duplicates:
+
+1. **Database Constraints**: `UNIQUE(team_name, captain_phone)`
+2. **Idempotency Keys**: 10-minute TTL, cached responses
+
+Usage: Send `Idempotency-Key: <unique-id>` header
+
+**Implementation:** `app/utils/idempotency.py`
+
+### 4. File Security
+
+Multi-layer file validation:
+
+- **Size Limit**: 5MB hard limit
+- **MIME Detection**: Uses `python-magic` for true file type detection
+- **Filename Sanitization**: Prevents path traversal attacks
+- **Allowed Types**: PNG, JPEG, PDF only
+
+**Implementation:** `app/utils/validation.py`
+
+### 5. Retry Logic with Exponential Backoff
+
+Never crash on transient failures:
+
+**Cloudinary Uploads** (3 retries):
+- Attempt 1: Immediate
+- Attempt 2: +0.5s
+- Attempt 3: +1.0s
+- Attempt 4: +2.0s
+
+**Email Sending** (2 retries):
+- Attempt 1: Immediate
+- Attempt 2: +1.0s
+- Attempt 3: +2.0s
+
+**Implementations:**
+- `app/utils/cloudinary_reliable.py`
+- `app/utils/email_reliable.py`
+
+### 6. Structured Logging & Monitoring
+
+JSON-formatted logs with request tracking:
+
+```json
+{
+  "timestamp": "2024-01-15T10:30:45Z",
+  "request_id": "req_abc123",
+  "event": "registration_started",
+  "team_name": "Warriors",
+  "client_ip": "192.168.1.1",
+  "duration_ms": 1250
+}
+```
+
+**Events Logged:**
+- `registration_started`
+- `validation_error`
+- `file_upload` (success/failed)
+- `db_operation` (insert/update)
+- `email_sent` (success/failed)
+- `exception` (with stack traces)
+
+**Implementation:** `app/middleware/logging_middleware.py`
+
+### 7. Unified Error Response Format
+
+Consistent error structure across all endpoints:
+
+```json
+{
+  "success": false,
+  "error_code": "VALIDATION_FAILED",
+  "message": "Human-readable description",
+  "details": {
+    "field": "captain_phone",
+    "value": "123"
+  }
+}
+```
+
+**Implementation:** `app/utils/error_responses.py`
+
+---
+
+## 🚨 Error Codes
+
+| Code | HTTP Status | Description |
+|------|-------------|-------------|
+| `VALIDATION_FAILED` | 400 | Input validation error |
+| `DUPLICATE_SUBMISSION` | 409 | Team/idempotency key already exists |
+| `FILE_TOO_LARGE` | 400 | File exceeds 5MB limit |
+| `INVALID_MIME_TYPE` | 400 | Invalid file type (not PNG/JPEG/PDF) |
+| `DB_WRITE_FAILED` | 500 | Database operation failed |
+| `CLOUDINARY_UPLOAD_FAILED` | 500 | File upload failed after retries |
+| `EMAIL_FAILED` | 500 | Email send failed (non-fatal) |
+| `TEAM_ID_GENERATION_FAILED` | 500 | Could not generate team ID |
+| `INTERNAL_SERVER_ERROR` | 500 | Unexpected server error |
+
+---
+
+## 🏗️ Architecture
+
+### Tech Stack
+
+```
+┌─────────────────────────────────────────┐
+│     FastAPI Web Framework               │
+│  (Async Python, Production-Hardened)    │
+├─────────────────────────────────────────┤
+│  Security & Validation Layer            │
+│  (Race-safe IDs, Input Validation)      │
+├─────────────────────────────────────────┤
+│  Reliability Layer                      │
+│  (Retry Logic, Idempotency)             │
+├─────────────────────────────────────────┤
+│  Monitoring & Logging                   │
+│  (Structured Logs, Request Tracking)    │
+├─────────────────────────────────────────┤
+│     SQLAlchemy ORM                      │
+│  (Async, Transaction-Safe)              │
+├─────────────────────────────────────────┤
+│     PostgreSQL Database                 │
+│  (With Constraints & Indices)           │
+├─────────────────────────────────────────┤
+│  External Services                      │
+│  (Cloudinary, SMTP)                     │
+└─────────────────────────────────────────┘
+```
+
+### Project Structure
+
+```
+ICCT26_BACKEND/
+├── main.py                          # Main FastAPI application
+├── requirements.txt                 # Python dependencies
+├── pyproject.toml                   # Project configuration
+├── .env.example                     # Environment variables template
+├── README.md                        # This file
+│
+├── app/
+│   ├── routes/
+│   │   └── registration_production.py  # Production-hardened endpoint
+│   │
+│   ├── utils/
+│   │   ├── race_safe_team_id.py    # Sequential ID generator
+│   │   ├── validation.py           # Input validation
+│   │   ├── idempotency.py          # Duplicate prevention
+│   │   ├── cloudinary_reliable.py  # Upload with retry
+│   │   ├── email_reliable.py       # Email with retry
+│   │   └── error_responses.py      # Unified errors
+│   │
+│   └── middleware/
+│       └── logging_middleware.py    # Structured logging
+│
+├── tests/
+│   ├── test_race_safe_id.py        # ID generation tests
+│   ├── test_validation.py          # Validation tests
+│   ├── test_idempotency.py         # Idempotency tests
+│   └── test_registration_integration.py  # E2E tests
+│
+└── venv/                            # Virtual environment (git-ignored)
+```
+
+### Database Schema
+
+```sql
+-- Teams Table (with unique constraint)
+CREATE TABLE teams (
+    id SERIAL PRIMARY KEY,
+    team_id VARCHAR(50) UNIQUE NOT NULL,
+    team_name VARCHAR(100) NOT NULL,
+    church_name VARCHAR(200) NOT NULL,
+    captain_name VARCHAR(100),
+    captain_phone VARCHAR(20),
+    captain_email VARCHAR(255),
+    captain_whatsapp VARCHAR(20),
+    vice_captain_name VARCHAR(100),
+    vice_captain_phone VARCHAR(20),
+    vice_captain_email VARCHAR(255),
+    vice_captain_whatsapp VARCHAR(20),
+    pastor_letter TEXT,
+    payment_receipt TEXT,
+    group_photo TEXT,
+    registration_date TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    -- Prevent duplicate registrations
+    CONSTRAINT uq_team_name_captain_phone UNIQUE (team_name, captain_phone)
+);
+
+-- Team Sequence Table (for race-safe IDs)
+CREATE TABLE team_sequence (
+    id INTEGER PRIMARY KEY DEFAULT 1,
+    last_number INTEGER DEFAULT 0,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Idempotency Keys Table (10-minute TTL)
+CREATE TABLE idempotency_keys (
+    id SERIAL PRIMARY KEY,
+    key VARCHAR(255) UNIQUE NOT NULL,
+    response_data TEXT,
+    expires_at TIMESTAMP NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Players Table
+CREATE TABLE players (
+    id SERIAL PRIMARY KEY,
+    player_id VARCHAR(50),
+    team_id VARCHAR(50) REFERENCES teams(team_id),
+    name VARCHAR(100) NOT NULL,
+    role VARCHAR(50) NOT NULL,
+    aadhar_file TEXT,
+    subscription_file TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Indices for performance
+CREATE INDEX idx_idempotency_key ON idempotency_keys(key);
+```
+
+---
+
+## 🔌 API Endpoints
+
+### Registration Endpoint (Production-Hardened)
+
+```
+POST /api/register/team
+```
+
+**Headers:**
+- `Content-Type: multipart/form-data`
+- `Idempotency-Key: <unique-id>` (optional, recommended)
+
+**Form Fields:**
+- `team_name` (required): Team name (3-80 chars)
+- `church_name` (required): Church name (3-50 chars)
+- `captain_name` (required): Captain full name (3-50 chars)
+- `captain_phone` (required): 10-digit phone number
+- `captain_email` (required): Valid email address
+- `captain_whatsapp` (required): 10-digit WhatsApp number
+- `vice_name` (required): Vice-captain full name
+- `vice_phone` (required): 10-digit phone number
+- `vice_email` (required): Valid email address
+- `vice_whatsapp` (required): 10-digit WhatsApp number
+- `players_json` (optional): JSON array of players
+- `pastor_letter` (required): File (PNG/JPEG/PDF, max 5MB)
+- `payment_receipt` (optional): File (PNG/JPEG/PDF, max 5MB)
+- `group_photo` (optional): File (PNG/JPEG/PDF, max 5MB)
+
+**Success Response (201):**
+```json
+{
+  "success": true,
+  "team_id": "ICCT-001",
+  "team_name": "Warriors",
+  "message": "Team registered successfully",
+  "email_sent": true,
+  "player_count": 15
+}
+```
+
+**Error Response (400/409/500):**
+```json
+{
+  "success": false,
+  "error_code": "VALIDATION_FAILED",
+  "message": "Captain phone must be exactly 10 digits",
+  "details": {
+    "field": "captain_phone",
+    "value": "123"
+  }
+}
+```
+
+### Authentication Endpoints
+
+```
+GET  /health                - Health check with DB status
+GET  /status                - API status
+```
+
+### Team Endpoints
 
 | Feature | Description |
 |---------|-------------|

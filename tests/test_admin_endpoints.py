@@ -16,11 +16,14 @@ Tests:
 Run: python tests/test_admin_endpoints.py
 """
 
+import pytest
+import pytest_asyncio
 import httpx
 import sys
 import os
 import json
 from datetime import datetime
+from main import app
 
 # Configuration
 BASE_URL = "http://localhost:8000"
@@ -38,10 +41,11 @@ test_results = {
 class TestAdminEndpoints:
     """Test suite for all admin API endpoints"""
 
-    @pytest.fixture
+    @pytest_asyncio.fixture
     async def client(self):
         """Create test client"""
-        async with httpx.AsyncClient(app=app, base_url=BASE_URL) as client:
+        from starlette.testclient import TestClient
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url=BASE_URL) as client:
             yield client
 
     # ========================================================
