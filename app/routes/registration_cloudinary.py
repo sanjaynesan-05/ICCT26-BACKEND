@@ -14,11 +14,28 @@ import logging
 from app.schemas_team import TeamRegistrationRequest
 from app.utils import retry_db_operation
 from app.utils.cloudinary_upload import upload_file_to_cloudinary
+# Temporarily inlined to test
+# from app.utils.team_id_generator import generate_sequential_team_id, generate_player_id
+from app.services import EmailService
 from models import Team, Player
 from database import get_db_async
+from sqlalchemy import func
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+# TEMPORARY INLINE FUNCTIONS FOR TESTING
+async def generate_sequential_team_id(db: AsyncSession) -> str:
+    """Generate sequential team ID: ICCT-001, ICCT-002, etc."""
+    result = await db.execute(select(func.count(Team.id)))
+    team_count = result.scalar() or 0
+    next_number = team_count + 1
+    return f"ICCT-{next_number:03d}"
+
+def generate_player_id(team_id: str, player_index: int) -> str:
+    """Generate player ID: ICCT-XXX-P01, ICCT-XXX-P02, etc."""
+    return f"{team_id}-P{player_index:02d}"
 
 
 @router.post("/register/team", status_code=201)
@@ -100,8 +117,8 @@ async def register_team(
                 }
             )
 
-        # Generate team ID
-        team_id = f"ICCT26-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        # Generate sequential team ID (ICCT-001, ICCT-002, etc.)
+        team_id = await generate_sequential_team_id(db)
         
         logger.info(f"{'='*70}")
         logger.info(f"📝 NEW TEAM REGISTRATION (Cloudinary Mode)")
@@ -199,7 +216,7 @@ async def register_team(
         
         players_list = []
         for idx, player_data in enumerate(registration.players, 1):
-            player_id = f"{team_id}-P{idx:02d}"
+            player_id = generate_player_id(team_id, idx)
             
             aadhar_url = None
             subscription_url = None
@@ -259,6 +276,54 @@ async def register_team(
         await db.refresh(team)
         logger.info(f"✅ Team record refreshed (DB ID: {team.id})")
 
+        # ============================================================
+        # STEP 5: Send Confirmation Email to Captain
+        # ============================================================
+        email_sent = False
+        try:
+            logger.info(f"📧 Sending confirmation email to captain: {registration.captain.email}")
+            
+            # Convert player data for email template
+            from app.schemas import PlayerDetails
+            player_details = [
+                PlayerDetails(
+                    name=player.name,
+                    age=25,  # Default age since not in schema
+                    phone="",  # Not available in current schema
+                    role=player.role
+                )
+                for player in players_list
+            ]
+            
+            # Create email content
+            html_content = EmailService.create_confirmation_email(
+                team_name=registration.teamName,
+                captain_name=registration.captain.name,
+                church_name=registration.churchName,
+                team_id=team_id,
+                players=player_details
+            )
+            
+            # Send email
+            email_result = EmailService.send_email(
+                to_email=registration.captain.email,
+                subject=f"🏏 Team Registration Confirmed - {registration.teamName}",
+                html_content=html_content
+            )
+            
+            email_sent = email_result.get('success', False)
+            
+            if email_sent:
+                logger.info(f"✅ Confirmation email sent to {registration.captain.email}")
+            else:
+                logger.warning(f"⚠️ Email failed to send: {email_result.get('message', 'Unknown error')}")
+                logger.warning(f"⚠️ Registration successful, but email not sent")
+        
+        except Exception as e:
+            logger.error(f"❌ Email sending error: {str(e)}")
+            logger.warning(f"⚠️ Registration successful, but email failed")
+            # Don't fail the registration if email fails
+
         # Log success
         logger.info(f"{'='*70}")
         logger.info(f"✅ REGISTRATION SUCCESSFUL (Cloudinary Mode)")
@@ -266,6 +331,7 @@ async def register_team(
         logger.info(f"Pastor Letter: {pastor_letter_url is not None}")
         logger.info(f"Payment Receipt: {payment_receipt_url is not None}")
         logger.info(f"Group Photo: {group_photo_url is not None}")
+        logger.info(f"Email Sent: {'✅ YES' if email_sent else '❌ NO'}")
         logger.info(f"{'='*70}")
 
         # Return success response with Cloudinary URLs
@@ -279,6 +345,7 @@ async def register_team(
             "vice_captain_name": registration.viceCaptain.name,
             "player_count": len(registration.players),
             "registration_date": datetime.now().isoformat(),
+            "email_sent": email_sent,
             "files": {
                 "pastor_letter_url": pastor_letter_url,
                 "payment_receipt_url": payment_receipt_url,

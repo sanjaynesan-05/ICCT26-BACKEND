@@ -12,6 +12,7 @@ import logging
 
 from app.schemas_team import TeamRegistrationRequest
 from app.utils import retry_db_operation
+from app.utils.team_id_generator import generate_sequential_team_id, generate_player_id
 from models import Team, Player
 from database import get_db_async
 
@@ -93,8 +94,8 @@ async def register_team(
                 }
             )
 
-        # Generate team ID
-        team_id = f"ICCT26-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        # Generate sequential team ID
+        team_id = await generate_sequential_team_id(db)
         
         logger.info(f"{'='*70}")
         logger.info(f"📝 NEW TEAM REGISTRATION")
@@ -131,7 +132,7 @@ async def register_team(
         # Create Player records (bulk insert)
         players_list = []
         for idx, player_data in enumerate(registration.players, 1):
-            player_id = f"{team_id}-P{idx:02d}"
+            player_id = generate_player_id(team_id, idx)
             
             player = Player(
                 player_id=player_id,

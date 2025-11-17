@@ -93,7 +93,7 @@ async def register_team(
     """
     try:
         # generate team id
-        team_id = generate_team_id()
+        team_id = await generate_sequential_team_id(session)
         logger.info(f"📝 New registration start: {request.teamName} / {team_id}")
 
         # save uploaded file references (shortened)

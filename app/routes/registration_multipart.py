@@ -33,19 +33,10 @@ from app.utils.file_validation import (
     validate_required_fields,
     sanitize_cloudinary_url
 )
+from app.utils.team_id_generator import generate_sequential_team_id, generate_player_id
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-
-def generate_team_id() -> str:
-    """Generate unique team ID: TEAM-YYYYMMDD-XXXXXXXX"""
-    date_str = datetime.now().strftime("%Y%m%d")
-    unique_id = str(uuid.uuid4()).replace('-', '')[:8].upper()
-    return f"TEAM-{date_str}-{unique_id}"
-
-def generate_player_id(team_id: str, index: int) -> str:
-    """Generate player ID: TEAM-YYYYMMDD-XXXXXXXX-P01"""
-    return f"{team_id}-P{index:02d}"
 
 
 @router.post(
@@ -173,8 +164,8 @@ async def register_team_multipart(
                 detail=f"Player file validation failed: {str(e)}"
             )
         
-        # STEP 3: Generate team ID
-        team_id = generate_team_id()
+        # STEP 3: Generate sequential team ID
+        team_id = await generate_sequential_team_id(db)
         logger.info(f"STEP 3: Generated team ID: {team_id}")
         
         # STEP 4: Upload team files to Cloudinary
