@@ -1,6 +1,7 @@
 """
 ICCT26 Cricket Tournament Registration API
 Main FastAPI application entry point
+Production-hardened with complete feature set
 """
 
 import asyncio
@@ -17,32 +18,39 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import sessionmaker as async_sessionmaker
 
-from app.config import settings, get_async_database_url, get_async_engine
+# Production configuration and imports
+from config import settings
+from app.utils.structured_logging import setup_logging, get_logger
+from app.utils.global_exception_handler import setup_global_exception_handlers
+from app.middleware.production_middleware import setup_middleware
+from app.utils.database_hardening import setup_database_healthcheck, teardown_database, DatabasePooling
+from app.config import get_async_database_url, get_async_engine
 from app.routes import main_router
+
+# Initialize structured logging
+logger = setup_logging(
+    "icct26_backend",
+    log_file=settings.LOG_FILE if settings.LOG_TO_FILE else None,
+    log_level=settings.LOG_LEVEL
+)
+
+# Get environment
+ENVIRONMENT = settings.ENVIRONMENT
+IS_PRODUCTION = ENVIRONMENT == "production"
+
+logger.info(
+    "Initializing ICCT26 Backend",
+    extra={"environment": ENVIRONMENT}
+)
 
 # Initialize Cloudinary
 try:
     import cloudinary_config
     cloudinary_config.verify_cloudinary_config()
-    logger = logging.getLogger(__name__)
-    logger.info("☁️ Cloudinary initialized successfully")
+    logger.info("Cloudinary initialized successfully")
 except Exception as e:
-    logger = logging.getLogger(__name__)
-    logger.warning(f"⚠️ Cloudinary initialization failed: {str(e)}")
-    logger.warning("⚠️ File uploads will use Base64 fallback mode")
-
-# -----------------------
-# Logging Configuration
-# -----------------------
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
-
-# Get environment
-ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
-IS_PRODUCTION = ENVIRONMENT == "production"
+    logger.warning(f"Cloudinary initialization failed: {str(e)}")
+    logger.warning("File uploads will use Base64 fallback mode")
 
 # -----------------------
 # FastAPI app initialization
@@ -56,76 +64,30 @@ app = FastAPI(
     openapi_url="/openapi.json",
 )
 
-logger.info(f"🚀 Initializing FastAPI application ({ENVIRONMENT})")
-
-# -----------------------
-# CORS Middleware - MUST be added BEFORE any routes
-# -----------------------
-origins = [
-    # Production domains
-    "https://icct26.netlify.app",
-    "https://www.icct26.netlify.app",
-    "https://icct26-admin.vercel.app",          # Admin panel production
-    "https://production-domain.com",             # Main production domain
-    
-    # Development/Local
-    "http://localhost:3000",                     # React dev server
-    "http://localhost:5173",                     # Vite dev server
-    "http://127.0.0.1:3000",                     # React dev server (127.0.0.1)
-    "http://127.0.0.1:5173",                     # Vite dev server (127.0.0.1)
-]
-
-logger.info("=" * 70)
-logger.info("📡 CORS CONFIGURATION")
-logger.info("=" * 70)
-logger.info(f"✅ Allowed Origins ({len(origins)}):")
-for origin in sorted(origins):
-    logger.info(f"   • {origin}")
-logger.info(f"✅ Allowed Methods: * (GET, POST, PUT, DELETE, OPTIONS, etc.)")
-logger.info(f"✅ Allowed Headers: * (all headers)")
-logger.info(f"✅ Expose Headers: * (all headers)")
-logger.info(f"✅ Credentials: True")
-logger.info("=" * 70)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-    expose_headers=["*"],
+logger.info(
+    "FastAPI application initialized",
+    extra={"version": settings.APP_VERSION}
 )
 
-logger.info("✅ CORS Middleware configured and loaded")
+# -----------------------
+# Setup Global Exception Handlers (MUST be first)
+# -----------------------
+setup_global_exception_handlers(app)
+logger.info("Global exception handlers configured")
 
 # -----------------------
-# Request Logging Middleware (for debugging)
+# Setup Production Middleware Suite
 # -----------------------
-@app.middleware("http")
-async def log_request_middleware(request: Request, call_next):
-    """Log incoming requests and responses (useful for debugging CORS)"""
-    start_time = time.time()
+setup_middleware(app)
+logger.info("Production middleware suite configured")
 
-    request_id = request.headers.get("x-request-id", "N/A")
-    origin = request.headers.get("origin", "N/A")
-    method = request.method
-    path = request.url.path
-
-    logger.info(f"📨 Incoming: [{request_id}] {method} {path}")
-    if origin != "N/A":
-        logger.info(f"   Origin: {origin}")
-
-    try:
-        response = await call_next(request)
-        process_time = time.time() - start_time
-        status_code = response.status_code
-        status_emoji = "✅" if 200 <= status_code < 300 else "⚠️" if 300 <= status_code < 400 else "❌"
-        logger.info(f"📤 Response: [{request_id}] {status_emoji} {status_code} (took {process_time:.3f}s)")
-        return response
-    except Exception as e:
-        process_time = time.time() - start_time
-        logger.error(f"❌ Error: [{request_id}] {str(e)} (took {process_time:.3f}s)")
-        raise
+# -----------------------
+# CORS Configuration (from settings)
+# -----------------------
+logger.info(
+    "CORS configuration loaded",
+    extra={"origins": settings.CORS_ORIGINS}
+)
 
 # -----------------------
 # Async DB config (Neon-optimized)
@@ -231,11 +193,75 @@ async def keep_neon_awake():
 # -----------------------
 @app.on_event("startup")
 async def startup_event():
-    """Initialize async metadata, ensure sync tables exist, and warm up Neon DB"""
+    """Initialize async metadata, ensure sync tables exist, warm up Neon DB, and run production health checks"""
     try:
+        # Production health check: validate database connectivity
+        logger.info("🏥 Running production database health check...")
+        try:
+            await setup_database_healthcheck(async_engine)
+            logger.info("✅ Production database health check passed")
+        except Exception as health_err:
+            logger.error(f"❌ Database health check failed: {health_err}")
+            raise
+        
         async with async_engine.begin() as conn:
             await conn.run_sync(AsyncBase.metadata.create_all)
         logger.info("✅ Database tables initialized (async)")
+        
+        # Initialize production hardening tables
+        logger.info("🔧 Initializing production hardening tables...")
+        try:
+            async with async_engine.begin() as conn:
+                # Create team_sequence table for race-safe IDs
+                await conn.execute(text("""
+                    CREATE TABLE IF NOT EXISTS team_sequence (
+                        id INTEGER PRIMARY KEY DEFAULT 1,
+                        last_number INTEGER DEFAULT 0,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """))
+                
+                # Initialize sequence with starting value
+                await conn.execute(text("""
+                    INSERT INTO team_sequence (id, last_number)
+                    VALUES (1, 0)
+                    ON CONFLICT (id) DO NOTHING
+                """))
+                
+                # Create idempotency_keys table for duplicate prevention
+                await conn.execute(text("""
+                    CREATE TABLE IF NOT EXISTS idempotency_keys (
+                        id SERIAL PRIMARY KEY,
+                        key VARCHAR(255) UNIQUE NOT NULL,
+                        response_data TEXT,
+                        expires_at TIMESTAMP NOT NULL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """))
+                
+                # Create index for faster lookups
+                await conn.execute(text("""
+                    CREATE INDEX IF NOT EXISTS idx_idempotency_key ON idempotency_keys(key)
+                """))
+                
+                # Add unique constraint to teams table (if not exists)
+                await conn.execute(text("""
+                    DO $$
+                    BEGIN
+                        IF NOT EXISTS (
+                            SELECT 1 FROM pg_constraint 
+                            WHERE conname = 'uq_team_name_captain_phone'
+                        ) THEN
+                            ALTER TABLE teams 
+                            ADD CONSTRAINT uq_team_name_captain_phone 
+                            UNIQUE (team_name, captain_phone);
+                        END IF;
+                    END $$;
+                """))
+                
+            logger.info("✅ Production hardening tables initialized")
+        except Exception as hardening_err:
+            logger.warning(f"⚠️ Production hardening table creation failed: {hardening_err}")
         
         # 🔥 Warm up Neon by pinging it early
         try:
@@ -296,10 +322,21 @@ async def startup_event():
     
     # 🌙 Start background task to keep Neon awake
     asyncio.create_task(keep_neon_awake())
+    logger.info("✅ Application startup complete - all production systems initialized")
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    logger.info("Shutting down application...")
+    """Graceful shutdown: close database connections and cleanup resources"""
+    try:
+        logger.info("Shutting down application...")
+        # Graceful database teardown
+        logger.info("🔌 Closing database connections...")
+        await teardown_database(async_engine)
+        logger.info("✅ Database connections closed gracefully")
+    except Exception as shutdown_err:
+        logger.error(f"❌ Error during shutdown: {shutdown_err}")
+    finally:
+        logger.info("✅ Application shutdown complete")
 
 # -----------------------
 # Async DB dependency (for routes that rely on this module)
@@ -316,11 +353,6 @@ async def get_db_async():
 # -----------------------
 logger.info("📍 Including application routers...")
 app.include_router(main_router)
-
-# Include new multipart upload router
-from app.routes import registration_multipart
-app.include_router(registration_multipart.router, prefix="/api", tags=["Registration-Multipart"])
-logger.info("✅ Multipart upload router included")
 
 logger.info("✅ All routers included successfully")
 

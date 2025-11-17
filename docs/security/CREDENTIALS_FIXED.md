@@ -26,9 +26,9 @@ SMTP_PASSWORD=your-app-password
 ### `.env.local` (LOCAL ONLY ⚠️ - NEVER COMMIT)
 ```properties
 # Real credentials here
-DATABASE_URL=postgresql+asyncpg://postgres:icctpg@localhost:5432/icct26_db
-SMTP_USERNAME=sanjaynesan007@gmail.com
-SMTP_PASSWORD=capblszgvdjcrwyd
+DATABASE_URL=postgresql+asyncpg://postgres:your-secure-password@localhost:5432/icct26_db
+SMTP_USERNAME=your-email@gmail.com
+SMTP_PASSWORD=your-app-specific-password
 ```
 
 ---
@@ -82,11 +82,11 @@ So your local `.env.local` will override `.env` automatically!
 ## 📞 Current Credentials
 
 ### Local Development (in `.env.local`)
-- **Database**: `postgres:icctpg@localhost:5432/icct26_db`
-- **SMTP**: `sanjaynesan007@gmail.com` / `capblszgvdjcrwyd`
-- **Render**: `icctadmin:FhfKgVwHX7P7hmObQJFQvN0YBZxYUly7@render.com`
-- **Drive**: `1uHmktlUAbRB-ZvXlD7TosMW_zukPnBcO`
-- **Sheets**: `13gm7Ui8cskPbDybSzl-4MYoSoYlpdPbkBr39S-fvX6k`
+- **Database**: `postgres:your-db-password@localhost:5432/icct26_db`
+- **SMTP**: `your-email@gmail.com` / `your-app-specific-password`
+- **Render**: `your-db-user:your-password@render.com`
+- **Drive**: `your-google-drive-folder-id`
+- **Sheets**: `your-google-sheets-id`
 
 ### What's Safe to Commit (in `.env`)
 - Only placeholder values

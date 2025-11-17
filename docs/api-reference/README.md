@@ -284,8 +284,8 @@ async_session = sessionmaker(engine, class_=AsyncSession)
 ```env
 SMTP_SERVER=smtp.gmail.com
 SMTP_PORT=587
-SMTP_USERNAME=sanjaynesan007@gmail.com
-SMTP_PASSWORD=capblszgvdjcrwyd
+SMTP_USERNAME=your-email@gmail.com
+SMTP_PASSWORD=your-app-specific-password
 ```
 
 ---

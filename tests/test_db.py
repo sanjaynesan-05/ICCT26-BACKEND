@@ -6,6 +6,7 @@ Tests database connectivity and basic operations.
 """
 
 import asyncio
+import pytest
 from typing import Optional
 import sys
 import os
@@ -13,6 +14,7 @@ import os
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+@pytest.mark.asyncio
 async def test_async_connection() -> bool:
     """Test async database connection."""
     try:
@@ -26,6 +28,7 @@ async def test_async_connection() -> bool:
         print(f"❌ Async database connection test FAILED: {e}")
         return False
 
+@pytest.mark.asyncio
 async def test_async_session() -> bool:
     """Test async session creation."""
     try:
