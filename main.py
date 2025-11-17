@@ -62,11 +62,17 @@ logger.info(f"🚀 Initializing FastAPI application ({ENVIRONMENT})")
 # CORS Middleware - MUST be added BEFORE any routes
 # -----------------------
 origins = [
+    # Production domains
     "https://icct26.netlify.app",
     "https://www.icct26.netlify.app",
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    # add other allowed origins here (e.g., staging)
+    "https://icct26-admin.vercel.app",          # Admin panel production
+    "https://production-domain.com",             # Main production domain
+    
+    # Development/Local
+    "http://localhost:3000",                     # React dev server
+    "http://localhost:5173",                     # Vite dev server
+    "http://127.0.0.1:3000",                     # React dev server (127.0.0.1)
+    "http://127.0.0.1:5173",                     # Vite dev server (127.0.0.1)
 ]
 
 logger.info("=" * 70)
@@ -310,6 +316,12 @@ async def get_db_async():
 # -----------------------
 logger.info("📍 Including application routers...")
 app.include_router(main_router)
+
+# Include new multipart upload router
+from app.routes import registration_multipart
+app.include_router(registration_multipart.router, prefix="/api", tags=["Registration-Multipart"])
+logger.info("✅ Multipart upload router included")
+
 logger.info("✅ All routers included successfully")
 
 # -----------------------

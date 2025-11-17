@@ -226,10 +226,106 @@ def fix_player_fields(player: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     return player
 
 
+def ensure_valid_url(value: Optional[str]) -> str:
+    """
+    Ensure a file field is either a valid URL or empty string.
+    
+    Validates that the value is:
+    - A valid Cloudinary URL (starts with https://res.cloudinary.com)
+    - An empty string (if None or missing)
+    
+    NOT:
+    - JSON objects with {url, public_id, etc.}
+    - Partial/malformed URLs
+    - Base64 data
+    - Undefined/null values
+    
+    Args:
+        value: File field value from database (may be URL, Base64, object, or None)
+        
+    Returns:
+        Valid Cloudinary URL or empty string
+        
+    Examples:
+        >>> ensure_valid_url("https://res.cloudinary.com/dplaeuuqk/image/upload/...")
+        'https://res.cloudinary.com/dplaeuuqk/image/upload/...'
+        
+        >>> ensure_valid_url(None)
+        ''
+        
+        >>> ensure_valid_url("invalid data")
+        ''
+    """
+    if not value:
+        return ""
+    
+    # Convert to string if needed
+    value_str = str(value).strip()
+    
+    if not value_str:
+        return ""
+    
+    # Accept valid Cloudinary URLs
+    if value_str.startswith("https://res.cloudinary.com/"):
+        return value_str
+    
+    # Accept http URLs from Cloudinary (for backward compatibility)
+    if value_str.startswith("http://res.cloudinary.com/"):
+        # Convert to https
+        return value_str.replace("http://", "https://", 1)
+    
+    # Reject everything else (Base64, objects, malformed URLs, etc.)
+    return ""
+
+
+def clean_file_fields(data: Dict[str, Any], field_names: List[str]) -> Dict[str, Any]:
+    """
+    Clean file fields to ensure they are valid Cloudinary URLs or empty strings.
+    
+    This is the MAIN FUNCTION for admin endpoints to ensure clean responses.
+    
+    Args:
+        data: Dictionary with potential file fields
+        field_names: List of field names to clean (e.g., ["paymentReceipt", "pastorLetter"])
+        
+    Returns:
+        Dictionary with cleaned file fields
+        
+    Examples:
+        >>> team = {
+        ...     "teamName": "Warriors",
+        ...     "paymentReceipt": "https://res.cloudinary.com/...",
+        ...     "pastorLetter": None,
+        ...     "groupPhoto": "{\"url\": \"...\"}"
+        ... }
+        >>> cleaned = clean_file_fields(team, ["paymentReceipt", "pastorLetter", "groupPhoto"])
+        >>> cleaned["paymentReceipt"]
+        'https://res.cloudinary.com/...'
+        >>> cleaned["pastorLetter"]
+        ''
+        >>> cleaned["groupPhoto"]
+        ''
+    """
+    if not data:
+        return {}
+    
+    # Clean each file field
+    for field_name in field_names:
+        if field_name in data:
+            data[field_name] = ensure_valid_url(data[field_name])
+        else:
+            # Ensure field exists with empty string
+            data[field_name] = ""
+    
+    return data
+
+
 # Export all public functions
 __all__ = [
     "sanitize_base64",
     "format_base64_uri", 
     "fix_file_fields",
-    "fix_player_fields"
+    "fix_player_fields",
+    "ensure_valid_url",
+    "clean_file_fields"
 ]
