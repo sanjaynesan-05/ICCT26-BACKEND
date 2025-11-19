@@ -41,6 +41,12 @@ class Settings(BaseSettings):
     SMTP_USER: str = Field(default="", description="SMTP username")
     SMTP_PASS: str = Field(default="", description="SMTP password")
     SMTP_FROM_EMAIL: str = Field(default="noreply@icct26.com", description="From email address")
+    SMTP_FROM_NAME: str = Field(default="ICCT26 Cricket Tournament", description="From name for emails")
+    
+    @property
+    def SMTP_ENABLED(self) -> bool:
+        """Check if SMTP is properly configured"""
+        return bool(self.SMTP_USER and self.SMTP_PASS and self.SMTP_HOST)
     
     # Legacy field mapping
     @property
