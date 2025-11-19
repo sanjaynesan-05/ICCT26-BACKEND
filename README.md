@@ -1,101 +1,96 @@
 # ICCT26 Backend API
 
-A modern, **production-hardened** FastAPI backend for managing teams, players, and administrative operations with comprehensive security features, reliability enhancements, and monitoring capabilities.
+**Production-Ready FastAPI Backend for Cricket Tournament Team Registration**
 
-**Status:** ✅ Production Ready (Hardened) | **Python:** 3.8+ | **Framework:** FastAPI | **Database:** PostgreSQL
+A robust, enterprise-grade backend system for managing cricket tournament team registrations with complete player management, file uploads, and production hardening features.
 
 ---
 
-## 🔐 Production Security Features
+## 🎯 Project Overview
 
-This backend has been fully hardened for production use with:
+**Status:** ✅ Production Ready | **Version:** 1.0.0 | **Last Updated:** November 2025
 
-✅ **Race-Safe Team IDs** - Database-backed sequential IDs with zero race conditions  
-✅ **Strong Input Validation** - Regex-based validation for all inputs  
-✅ **Duplicate Protection** - Database constraints + idempotency keys  
-✅ **File Security** - 5MB limit, MIME type validation, sanitized filenames  
-✅ **Retry Logic** - Exponential backoff for uploads (3x) and emails (2x)  
-✅ **Structured Logging** - Request ID tracking, JSON logs for monitoring  
-✅ **Unified Errors** - Consistent error codes and response format  
+### What This Backend Does
+
+The ICCT26 Backend API provides a complete registration and management system for cricket tournaments with:
+
+- **Team Registration** - Multi-step form handling with validation
+- **Player Management** - Dynamic player extraction with role validation  
+- **File Storage** - Cloudinary integration for pastor letters, receipts, photos, and player documents
+- **Production Hardening** - Race-safe ID generation, retry logic, structured logging
+- **Database Management** - PostgreSQL with async SQLAlchemy ORM
+
+### Technology Stack
+
+```
+FastAPI 0.104+ (Async Python Web Framework)
+├── PostgreSQL (Neon) - Primary Database
+├── SQLAlchemy 2.0+ - Async ORM with connection pooling
+├── Cloudinary - File storage and CDN
+├── Pydantic 2.5+ - Data validation with pydantic-settings
+├── Uvicorn - ASGI production server
+└── Gunicorn - Multi-worker process manager
+```
 
 ---
 
 ## 📋 Table of Contents
 
-- [Quick Start](#quick-start)
-- [Production Features](#production-features)
-- [API Endpoints](#api-endpoints)
-- [Security & Validation](#security--validation)
-- [Error Codes](#error-codes)
-- [Installation & Setup](#installation--setup)
-- [Configuration](#configuration)
-- [Running the Application](#running-the-application)
-- [Testing](#testing)
-- [Monitoring](#monitoring)
-- [Deployment](#deployment)
-- [Documentation](#documentation)
+- [Quick Start](#-quick-start)
+- [Production Features](#-production-features)
+- [Architecture](#-architecture)
+- [API Endpoints](#-api-endpoints)
+- [Installation & Setup](#-installation--setup)
+- [Configuration](#-configuration)
+- [Database Schema](#-database-schema)
+- [Running the Application](#-running-the-application)
+- [Testing](#-testing)
+- [Deployment](#-deployment)
+- [Error Handling](#-error-handling)
+- [Monitoring & Logging](#-monitoring--logging)
+- [Security](#-security)
+- [Troubleshooting](#-troubleshooting)
 
 ---
 
 ## 🚀 Quick Start
 
 ### Prerequisites
-- Python 3.8 or higher
-- PostgreSQL 12 or higher
-- Cloudinary account (for file uploads)
-- SMTP credentials (for emails)
-- pip (Python package manager)
 
-### Installation (5 minutes)
+- Python 3.8 or higher
+- PostgreSQL 12+ or Neon database account
+- Cloudinary account (free tier works)
+- Git
+
+### 5-Minute Setup
 
 ```bash
-# 1. Clone the repository
-git clone <repository-url>
-cd ICCT26_BACKEND
+# 1. Clone repository
+git clone https://github.com/sanjaynesan-05/ICCT26-BACKEND.git
+cd ICCT26-BACKEND
 
 # 2. Create virtual environment
 python -m venv venv
 
 # 3. Activate virtual environment
-# On Windows:
+# Windows:
 .\venv\Scripts\activate
-# On macOS/Linux:
+# macOS/Linux:
 source venv/bin/activate
 
 # 4. Install dependencies
 pip install -r requirements.txt
 
 # 5. Configure environment variables
-# Copy .env.example to .env and fill in your values
-cp .env.example .env  # or copy .env.example .env on Windows
+cp .env.example .env.local
+# Edit .env.local with your database and Cloudinary credentials
 
-# 6. Set up database
-# See Database Setup section below
-
-# 7. Run the application
+# 6. Run the application
 uvicorn main:app --reload --port 8000
 ```
 
-The API will be available at `http://localhost:8000`
-
-**Swagger Documentation:** `http://localhost:8000/docs`  
-**ReDoc Documentation:** `http://localhost:8000/redoc`
-
----
-
-## 📖 Project Overview
-
-### What This Project Does
-
-ICCT26 Backend is a comprehensive REST API that manages:
-
-✅ **Teams Management** - Create, read, update, and manage teams  
-✅ **Player Management** - Track players, their statistics, and assignments  
-✅ **Admin Panel** - Comprehensive admin endpoints for system management  
-✅ **Email Notifications** - Automated email system with template support  
-✅ **Security** - Role-based access control, secure credential handling  
-
-### Key Features
+**API Documentation:** http://localhost:8000/docs  
+**Health Check:** http://localhost:8000/health
 
 ---
 
@@ -107,292 +102,115 @@ Sequential team IDs (`ICCT-001`, `ICCT-002`, etc.) with **zero race conditions**
 
 - Database-backed counter with `SELECT FOR UPDATE` row locking
 - Atomic increment operations in nested transactions
-- Handles concurrent requests safely
+- Handles 100+ concurrent requests safely
 - Max 3 retries on conflict with exponential backoff
 
-**Implementation:** `app/utils/race_safe_team_id.py`
+**Code:** `app/utils/race_safe_team_id.py`
 
-### 2. Strong Input Validation
+### 2. Dynamic Player Extraction
 
-Comprehensive validation layer for all inputs:
+**Frontend sends:**
+```text
+player_0_name, player_0_role, player_0_aadhar_file, player_0_subscription_file
+player_1_name, player_1_role, player_1_aadhar_file, player_1_subscription_file
+...
+player_14_name, player_14_role, player_14_aadhar_file, player_14_subscription_file
+```
 
-| Field | Rules |
-|-------|-------|
-| **Names** | 3-50 chars, letters/spaces/hyphens/apostrophes only |
-| **Phone** | Exactly 10 digits, numeric |
+**Backend automatically:**
+- Detects all players dynamically (no limit hardcoded)
+- Validates name (2+ chars) and role (Batsman/Bowler/All-Rounder/Wicket-Keeper)
+- Uploads aadhar + subscription files to Cloudinary
+- Creates Player records with Cloudinary URLs
+- Links players to team via foreign key
+
+**Code:** `app/routes/registration_production.py` (lines 120-180)
+
+### 3. Strong Input Validation
+
+Comprehensive validation layer using Pydantic and custom validators:
+
+| Field | Validation Rules |
+|-------|------------------|
+| **Team Name** | 3-80 chars, letters/spaces/hyphens only |
+| **Names** | 3-50 chars, letters/spaces/apostrophes/hyphens |
+| **Phone** | Exactly 10 digits, numeric only |
 | **Email** | RFC 5322 compliant regex |
-| **Team Name** | 3-80 chars |
-| **Files** | Max 5MB, MIME validation (PNG/JPEG/PDF only) |
+| **Player Role** | Must be: Batsman, Bowler, All-Rounder, or Wicket-Keeper |
+| **Files** | Max 5MB, PNG/JPEG/PDF only, MIME validation |
 
-**Implementation:** `app/utils/validation.py`
+**Code:** `app/utils/validation.py`
 
-### 3. Duplicate Submission Protection
+### 4. Duplicate Protection (Two-Layer Defense)
 
-Two-layer defense against duplicates:
+**Layer 1: Database Constraints**
+```sql
+CONSTRAINT uq_team_name_captain_phone UNIQUE (team_name, captain_phone)
+```
 
-1. **Database Constraints**: `UNIQUE(team_name, captain_phone)`
-2. **Idempotency Keys**: 10-minute TTL, cached responses
+**Layer 2: Idempotency Keys**
+- Send `Idempotency-Key: <unique-id>` header
+- Server caches response for 10 minutes
+- Prevents duplicate submissions on page refresh
+- Returns 409 Conflict with original response
 
-Usage: Send `Idempotency-Key: <unique-id>` header
+**Code:** `app/utils/idempotency.py`
 
-**Implementation:** `app/utils/idempotency.py`
+### 5. File Upload with Retry Logic
 
-### 4. File Security
+**Cloudinary uploads** (3 retries with exponential backoff):
 
-Multi-layer file validation:
-
-- **Size Limit**: 5MB hard limit
-- **MIME Detection**: Uses `python-magic` for true file type detection
-- **Filename Sanitization**: Prevents path traversal attacks
-- **Allowed Types**: PNG, JPEG, PDF only
-
-**Implementation:** `app/utils/validation.py`
-
-### 5. Retry Logic with Exponential Backoff
-
-Never crash on transient failures:
-
-**Cloudinary Uploads** (3 retries):
 - Attempt 1: Immediate
-- Attempt 2: +0.5s
-- Attempt 3: +1.0s
-- Attempt 4: +2.0s
+- Attempt 2: +0.5s delay
+- Attempt 3: +1.0s delay  
+- Attempt 4: +2.0s delay
 
-**Email Sending** (2 retries):
-- Attempt 1: Immediate
-- Attempt 2: +1.0s
-- Attempt 3: +2.0s
+**File organization:**
+```text
+ICCT26/
+├── pastor_letters/{team_id}/
+├── receipts/{team_id}/
+├── group_photos/{team_id}/
+└── players/{team_id}/
+    ├── player_0/
+    │   ├── aadhar/
+    │   └── subscription/
+    └── player_1/
+        ├── aadhar/
+        └── subscription/
+```
 
-**Implementations:**
-- `app/utils/cloudinary_reliable.py`
-- `app/utils/email_reliable.py`
+**Code:** `app/utils/cloudinary_reliable.py`
 
-### 6. Structured Logging & Monitoring
+### 6. Structured Logging & Request Tracking
 
-JSON-formatted logs with request tracking:
+JSON-formatted logs with unique request IDs:
 
 ```json
 {
-  "timestamp": "2024-01-15T10:30:45Z",
-  "request_id": "req_abc123",
+  "timestamp": "2025-11-19T10:30:45Z",
+  "request_id": "req_abc123xyz",
   "event": "registration_started",
   "team_name": "Warriors",
-  "client_ip": "192.168.1.1",
-  "duration_ms": 1250
+  "client_ip": "192.168.1.100",
+  "duration_ms": 1247
 }
 ```
 
-**Events Logged:**
-- `registration_started`
-- `validation_error`
-- `file_upload` (success/failed)
-- `db_operation` (insert/update)
-- `email_sent` (success/failed)
-- `exception` (with stack traces)
+**Events tracked:**
 
-**Implementation:** `app/middleware/logging_middleware.py`
+- `registration_started` - When registration begins
+- `validation_error` - Input validation failures
+- `file_upload` - Success/failure with URLs
+- `db_operation` - Insert/update/delete operations
+- `exception` - Unexpected errors with stack traces
+
+**Code:** `app/middleware/logging_middleware.py`
 
 ### 7. Unified Error Response Format
 
 Consistent error structure across all endpoints:
 
-```json
-{
-  "success": false,
-  "error_code": "VALIDATION_FAILED",
-  "message": "Human-readable description",
-  "details": {
-    "field": "captain_phone",
-    "value": "123"
-  }
-}
-```
-
-**Implementation:** `app/utils/error_responses.py`
-
----
-
-## 🚨 Error Codes
-
-| Code | HTTP Status | Description |
-|------|-------------|-------------|
-| `VALIDATION_FAILED` | 400 | Input validation error |
-| `DUPLICATE_SUBMISSION` | 409 | Team/idempotency key already exists |
-| `FILE_TOO_LARGE` | 400 | File exceeds 5MB limit |
-| `INVALID_MIME_TYPE` | 400 | Invalid file type (not PNG/JPEG/PDF) |
-| `DB_WRITE_FAILED` | 500 | Database operation failed |
-| `CLOUDINARY_UPLOAD_FAILED` | 500 | File upload failed after retries |
-| `EMAIL_FAILED` | 500 | Email send failed (non-fatal) |
-| `TEAM_ID_GENERATION_FAILED` | 500 | Could not generate team ID |
-| `INTERNAL_SERVER_ERROR` | 500 | Unexpected server error |
-
----
-
-## 🏗️ Architecture
-
-### Tech Stack
-
-```
-┌─────────────────────────────────────────┐
-│     FastAPI Web Framework               │
-│  (Async Python, Production-Hardened)    │
-├─────────────────────────────────────────┤
-│  Security & Validation Layer            │
-│  (Race-safe IDs, Input Validation)      │
-├─────────────────────────────────────────┤
-│  Reliability Layer                      │
-│  (Retry Logic, Idempotency)             │
-├─────────────────────────────────────────┤
-│  Monitoring & Logging                   │
-│  (Structured Logs, Request Tracking)    │
-├─────────────────────────────────────────┤
-│     SQLAlchemy ORM                      │
-│  (Async, Transaction-Safe)              │
-├─────────────────────────────────────────┤
-│     PostgreSQL Database                 │
-│  (With Constraints & Indices)           │
-├─────────────────────────────────────────┤
-│  External Services                      │
-│  (Cloudinary, SMTP)                     │
-└─────────────────────────────────────────┘
-```
-
-### Project Structure
-
-```
-ICCT26_BACKEND/
-├── main.py                          # Main FastAPI application
-├── requirements.txt                 # Python dependencies
-├── pyproject.toml                   # Project configuration
-├── .env.example                     # Environment variables template
-├── README.md                        # This file
-│
-├── app/
-│   ├── routes/
-│   │   └── registration_production.py  # Production-hardened endpoint
-│   │
-│   ├── utils/
-│   │   ├── race_safe_team_id.py    # Sequential ID generator
-│   │   ├── validation.py           # Input validation
-│   │   ├── idempotency.py          # Duplicate prevention
-│   │   ├── cloudinary_reliable.py  # Upload with retry
-│   │   ├── email_reliable.py       # Email with retry
-│   │   └── error_responses.py      # Unified errors
-│   │
-│   └── middleware/
-│       └── logging_middleware.py    # Structured logging
-│
-├── tests/
-│   ├── test_race_safe_id.py        # ID generation tests
-│   ├── test_validation.py          # Validation tests
-│   ├── test_idempotency.py         # Idempotency tests
-│   └── test_registration_integration.py  # E2E tests
-│
-└── venv/                            # Virtual environment (git-ignored)
-```
-
-### Database Schema
-
-```sql
--- Teams Table (with unique constraint)
-CREATE TABLE teams (
-    id SERIAL PRIMARY KEY,
-    team_id VARCHAR(50) UNIQUE NOT NULL,
-    team_name VARCHAR(100) NOT NULL,
-    church_name VARCHAR(200) NOT NULL,
-    captain_name VARCHAR(100),
-    captain_phone VARCHAR(20),
-    captain_email VARCHAR(255),
-    captain_whatsapp VARCHAR(20),
-    vice_captain_name VARCHAR(100),
-    vice_captain_phone VARCHAR(20),
-    vice_captain_email VARCHAR(255),
-    vice_captain_whatsapp VARCHAR(20),
-    pastor_letter TEXT,
-    payment_receipt TEXT,
-    group_photo TEXT,
-    registration_date TIMESTAMP,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    
-    -- Prevent duplicate registrations
-    CONSTRAINT uq_team_name_captain_phone UNIQUE (team_name, captain_phone)
-);
-
--- Team Sequence Table (for race-safe IDs)
-CREATE TABLE team_sequence (
-    id INTEGER PRIMARY KEY DEFAULT 1,
-    last_number INTEGER DEFAULT 0,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Idempotency Keys Table (10-minute TTL)
-CREATE TABLE idempotency_keys (
-    id SERIAL PRIMARY KEY,
-    key VARCHAR(255) UNIQUE NOT NULL,
-    response_data TEXT,
-    expires_at TIMESTAMP NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Players Table
-CREATE TABLE players (
-    id SERIAL PRIMARY KEY,
-    player_id VARCHAR(50),
-    team_id VARCHAR(50) REFERENCES teams(team_id),
-    name VARCHAR(100) NOT NULL,
-    role VARCHAR(50) NOT NULL,
-    aadhar_file TEXT,
-    subscription_file TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Indices for performance
-CREATE INDEX idx_idempotency_key ON idempotency_keys(key);
-```
-
----
-
-## 🔌 API Endpoints
-
-### Registration Endpoint (Production-Hardened)
-
-```
-POST /api/register/team
-```
-
-**Headers:**
-- `Content-Type: multipart/form-data`
-- `Idempotency-Key: <unique-id>` (optional, recommended)
-
-**Form Fields:**
-- `team_name` (required): Team name (3-80 chars)
-- `church_name` (required): Church name (3-50 chars)
-- `captain_name` (required): Captain full name (3-50 chars)
-- `captain_phone` (required): 10-digit phone number
-- `captain_email` (required): Valid email address
-- `captain_whatsapp` (required): 10-digit WhatsApp number
-- `vice_name` (required): Vice-captain full name
-- `vice_phone` (required): 10-digit phone number
-- `vice_email` (required): Valid email address
-- `vice_whatsapp` (required): 10-digit WhatsApp number
-- `players_json` (optional): JSON array of players
-- `pastor_letter` (required): File (PNG/JPEG/PDF, max 5MB)
-- `payment_receipt` (optional): File (PNG/JPEG/PDF, max 5MB)
-- `group_photo` (optional): File (PNG/JPEG/PDF, max 5MB)
-
-**Success Response (201):**
-```json
-{
-  "success": true,
-  "team_id": "ICCT-001",
-  "team_name": "Warriors",
-  "message": "Team registered successfully",
-  "email_sent": true,
-  "player_count": 15
-}
-```
-
-**Error Response (400/409/500):**
 ```json
 {
   "success": false,
@@ -405,767 +223,1150 @@ POST /api/register/team
 }
 ```
 
-### Authentication Endpoints
-
-```
-GET  /health                - Health check with DB status
-GET  /status                - API status
-```
-
-### Team Endpoints
-
-| Feature | Description |
-|---------|-------------|
-| **FastAPI** | Modern async Python web framework with automatic OpenAPI docs |
-| **SQLAlchemy ORM** | Type-safe database operations with async support |
-| **PostgreSQL** | Robust, scalable relational database |
-| **Async/Await** | Non-blocking I/O for high performance |
-| **Email Integration** | SMTP-based email notifications with templates |
-| **Admin Panel** | Dedicated endpoints for administrative operations |
-| **Error Handling** | Comprehensive exception handling with meaningful responses |
-| **Type Hints** | Full type annotations for IDE support and code clarity |
+**Code:** `app/utils/error_responses.py`
 
 ---
 
 ## 🏗️ Architecture
 
-### Tech Stack
+### System Architecture
 
-```
-┌─────────────────────────────────────────┐
-│     FastAPI Web Framework               │
-│  (Async Python, Starlette-based)        │
-├─────────────────────────────────────────┤
-│     SQLAlchemy ORM + Alembic            │
-│  (Database abstraction, migrations)     │
-├─────────────────────────────────────────┤
-│     PostgreSQL Database                 │
-│  (Persistent data storage)              │
-├─────────────────────────────────────────┤
-│     Pydantic Models                     │
-│  (Request/Response validation)          │
-├─────────────────────────────────────────┤
-│     SMTP Email Service                  │
-│  (Email notifications)                  │
-└─────────────────────────────────────────┘
+```text
+┌─────────────────────────────────────────────────────┐
+│              Frontend (React/Next.js)               │
+│         (Sends multipart/form-data)                 │
+└─────────────────────┬───────────────────────────────┘
+                      │ HTTP POST
+                      │ /api/register/team
+                      ▼
+┌─────────────────────────────────────────────────────┐
+│           FastAPI Application (main.py)             │
+├─────────────────────────────────────────────────────┤
+│  Production Middleware:                             │
+│  ├── CORS (origin validation)                       │
+│  ├── Request ID tracking                            │
+│  ├── Rate limiting                                  │
+│  └── Structured logging                             │
+├─────────────────────────────────────────────────────┤
+│  Registration Endpoint:                             │
+│  (app/routes/registration_production.py)            │
+│                                                      │
+│  Step 1: Idempotency check                          │
+│  Step 2: Validate team/captain/vice-captain         │
+│  Step 3: Validate files (pastor letter, etc.)       │
+│  Step 4: Extract players dynamically                │
+│  Step 5: Generate race-safe team ID                 │
+│  Step 6: Upload team files to Cloudinary            │
+│  Step 7: Upload player files + create records       │
+│  Step 8: Store idempotency key                      │
+│  Step 9: Return success response                    │
+├─────────────────────────────────────────────────────┤
+│  Utilities Layer:                                   │
+│  ├── race_safe_team_id.py (ID generation)          │
+│  ├── validation.py (input validation)              │
+│  ├── cloudinary_reliable.py (file uploads)         │
+│  ├── idempotency.py (duplicate prevention)         │
+│  └── error_responses.py (unified errors)           │
+└─────────────────────┬───────────────────────────────┘
+                      │
+            ┌─────────┴──────────┬──────────────────┐
+            ▼                    ▼                  ▼
+    ┌───────────────┐   ┌────────────────┐  ┌─────────────┐
+    │  PostgreSQL   │   │   Cloudinary   │  │ Monitoring  │
+    │  (Neon DB)    │   │   CDN + Files  │  │  Logs JSON  │
+    │               │   │                │  │             │
+    │ Tables:       │   │ Folders:       │  │ Events:     │
+    │ - teams       │   │ - pastor_...   │  │ - reg_start │
+    │ - players     │   │ - receipts     │  │ - upload    │
+    │ - team_seq    │   │ - players/...  │  │ - db_op     │
+    │ - idem_keys   │   │                │  │ - errors    │
+    └───────────────┘   └────────────────┘  └─────────────┘
 ```
 
 ### Project Structure
 
-```
-ICCT26_BACKEND/
-├── main.py                          # Main FastAPI application
+```text
+ICCT26-BACKEND/
+├── main.py                          # FastAPI application entry point
+├── config.py                        # Pydantic settings (env vars)
+├── database.py                      # SQLAlchemy engine configuration
+├── models.py                        # Database models (Team, Player)
+├── cloudinary_config.py             # Cloudinary setup
 ├── requirements.txt                 # Python dependencies
-├── pyproject.toml                   # Project configuration
-├── .env.example                     # Environment variables template
+├── .env.example                     # Environment template
+├── .env.local                       # Local config (gitignored)
 ├── README.md                        # This file
 │
-├── venv/                            # Virtual environment (git-ignored)
+├── app/
+│   ├── routes/
+│   │   ├── registration_production.py  # Main registration endpoint
+│   │   ├── team.py                     # Team management routes
+│   │   ├── admin.py                    # Admin endpoints
+│   │   └── health.py                   # Health check
+│   │
+│   ├── utils/
+│   │   ├── race_safe_team_id.py        # Sequential ID generator
+│   │   ├── validation.py               # Input validation
+│   │   ├── idempotency.py              # Duplicate prevention
+│   │   ├── cloudinary_reliable.py      # Upload with retry
+│   │   ├── error_responses.py          # Unified errors
+│   │   ├── structured_logging.py       # JSON logging
+│   │   ├── database_hardening.py       # DB health checks
+│   │   └── global_exception_handler.py # Exception handlers
+│   │
+│   └── middleware/
+│       └── production_middleware.py    # CORS, request tracking
 │
-└── docs/                            # Documentation
-    ├── INDEX.md                     # Documentation master index
-    ├── admin-panel/                 # Admin panel docs (8 files)
-    ├── api-reference/               # API reference docs (2 files)
-    ├── deployment/                  # Deployment guides (4 files)
-    ├── frontend/                    # Frontend integration (6 files)
-    ├── security/                    # Security guidelines (3 files)
-    └── setup/                       # Setup guides (3 files)
-```
-
-### Database Schema
-
-```sql
--- Teams Table
-CREATE TABLE teams (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(255) NOT NULL UNIQUE,
-    description TEXT,
-    coach VARCHAR(255),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Players Table
-CREATE TABLE players (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
-    position VARCHAR(100),
-    jersey_number INT,
-    team_id INT REFERENCES teams(id) ON DELETE CASCADE,
-    email VARCHAR(255),
-    phone VARCHAR(20),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Indices for performance
-CREATE INDEX idx_players_team_id ON players(team_id);
-CREATE INDEX idx_players_email ON players(email);
+├── tests/
+│   ├── test_race_safe_id.py            # ID generation tests
+│   ├── test_validation.py              # Validation tests
+│   ├── test_idempotency.py             # Idempotency tests
+│   └── test_registration_integration.py # E2E tests (25 tests)
+│
+└── venv/                                # Virtual environment (gitignored)
 ```
 
 ---
 
 ## 🔌 API Endpoints
 
-### Authentication Endpoints
+**Endpoint:**
 
-```
-GET  /auth/health           - Health check / API status
-```
-
-### Team Endpoints
-
-```
-GET    /teams               - Get all teams
-POST   /teams               - Create new team
-GET    /teams/{team_id}     - Get specific team
-PUT    /teams/{team_id}     - Update team
-DELETE /teams/{team_id}     - Delete team
+```http
+POST /api/register/team
 ```
 
-### Player Endpoints
+**Headers:**
 
+- `Content-Type: multipart/form-data`
+- `Idempotency-Key: <unique-uuid>` (optional but recommended)
+
+**Form Fields (Team & Officials):**
+
+- `team_name` - Team name (required, 3-80 chars)
+- `church_name` - Church name (required, 3-50 chars)
+- `captain_name` - Captain full name (required)
+- `captain_phone` - 10-digit phone (required)
+- `captain_email` - Valid email (required)
+- `captain_whatsapp` - 10-digit WhatsApp (required)
+- `vice_name` - Vice-captain name (required)
+- `vice_phone` - 10-digit phone (required)
+- `vice_email` - Valid email (required)
+- `vice_whatsapp` - 10-digit WhatsApp (required)
+
+**Form Fields (Files):**
+
+- `pastor_letter` - PDF/PNG/JPEG, max 5MB (required)
+- `payment_receipt` - PDF/PNG/JPEG, max 5MB (optional)
+- `group_photo` - PNG/JPEG, max 5MB (optional)
+
+**Form Fields (Players - Dynamic):**
+
+For each player `i` (starting from 0):
+
+- `player_i_name` - Player name (required, 2+ chars)
+- `player_i_role` - Role: Batsman/Bowler/All-Rounder/Wicket-Keeper (required)
+- `player_i_aadhar_file` - Aadhar card (PDF/PNG/JPEG, max 5MB)
+- `player_i_subscription_file` - Church subscription (PDF/PNG/JPEG, max 5MB)
+
+**Example:**
+
+```bash
+curl -X POST "https://api.icct26.com/api/register/team" \
+  -H "Idempotency-Key: unique-uuid-here" \
+  -F "team_name=Chennai Warriors" \
+  -F "church_name=CSI Church Coimbatore" \
+  -F "captain_name=John Doe" \
+  -F "captain_phone=9876543210" \
+  -F "captain_email=john@example.com" \
+  -F "captain_whatsapp=9876543210" \
+  -F "vice_name=Jane Smith" \
+  -F "vice_phone=9876543211" \
+  -F "vice_email=jane@example.com" \
+  -F "vice_whatsapp=9876543211" \
+  -F "pastor_letter=@pastor.pdf" \
+  -F "payment_receipt=@receipt.png" \
+  -F "group_photo=@team.jpg" \
+  -F "player_0_name=Player One" \
+  -F "player_0_role=Batsman" \
+  -F "player_0_aadhar_file=@p0_aadhar.jpg" \
+  -F "player_0_subscription_file=@p0_sub.pdf" \
+  -F "player_1_name=Player Two" \
+  -F "player_1_role=Bowler" \
+  -F "player_1_aadhar_file=@p1_aadhar.jpg" \
+  -F "player_1_subscription_file=@p1_sub.pdf"
 ```
-GET    /players             - Get all players
-POST   /players             - Create new player
-GET    /players/{player_id} - Get specific player
-PUT    /players/{player_id} - Update player
-DELETE /players/{player_id} - Delete player
+
+**Success Response (201 Created):**
+
+```json
+{
+  "success": true,
+  "team_id": "ICCT-005",
+  "team_name": "Chennai Warriors",
+  "message": "Team registered successfully",
+  "player_count": 11
+}
+```
+
+**Error Response (400 Bad Request):**
+
+```json
+{
+  "success": false,
+  "error_code": "VALIDATION_FAILED",
+  "message": "Player 1 role must be one of: Batsman, Bowler, All-Rounder, Wicket-Keeper",
+  "details": {
+    "field": "player_0_role",
+    "value": "InvalidRole"
+  }
+}
+```
+
+**Error Response (409 Conflict - Duplicate):**
+
+```json
+{
+  "success": true,
+  "team_id": "ICCT-003",
+  "team_name": "Chennai Warriors",
+  "message": "Team registered successfully",
+  "player_count": 11
+}
+```
+
+### Health Check Endpoint
+
+```http
+GET /health
+```
+
+**Response:**
+
+```json
+{
+  "status": "healthy",
+  "database": "connected",
+  "cloudinary": "configured",
+  "timestamp": "2025-11-19T10:30:45Z"
+}
 ```
 
 ### Admin Endpoints
 
+```http
+GET /admin/teams              # Get all teams
+GET /admin/teams/{team_id}    # Get specific team with players
+GET /admin/players            # Get all players
 ```
-GET    /admin/teams         - Get all teams with detailed info (admin)
-GET    /admin/teams/{team_id}        - Get team with all players
-GET    /admin/players/{player_id}    - Get player with full details
-```
-
-### Email Endpoints
-
-```
-POST   /send-test-email     - Send test email
-POST   /send-email          - Send custom email
-```
-
-**Full API Documentation:** See `docs/api-reference/` and `docs/INDEX.md`
 
 ---
 
-## 📥 Installation & Setup
+## 💾 Installation & Setup
 
-### Step 1: Clone Repository
+### Step 1: Prerequisites
+
+Install the following on your system:
+
+- **Python 3.8+** - [Download](https://www.python.org/downloads/)
+- **PostgreSQL 12+** - [Download](https://www.postgresql.org/download/) OR [Neon Account](https://neon.tech/)
+- **Cloudinary Account** - [Sign Up](https://cloudinary.com/)
+- **Git** - [Download](https://git-scm.com/)
+
+### Step 2: Clone Repository
 
 ```bash
-git clone <repository-url>
-cd ICCT26_BACKEND
+git clone https://github.com/sanjaynesan-05/ICCT26-BACKEND.git
+cd ICCT26-BACKEND
 ```
 
-### Step 2: Create Virtual Environment
+### Step 3: Create Virtual Environment
 
-```bash
-# Windows
+**Windows:**
+
+```powershell
 python -m venv venv
 .\venv\Scripts\activate
+```
 
-# macOS/Linux
+**macOS/Linux:**
+
+```bash
 python3 -m venv venv
 source venv/bin/activate
 ```
 
-### Step 3: Install Dependencies
+### Step 4: Install Dependencies
 
 ```bash
 pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-### Step 4: Configure Environment Variables
+### Step 5: Configure Environment Variables
 
 ```bash
-# Copy the example file
-cp .env.example .env
+# Copy example file
+cp .env.example .env.local
 
-# Edit .env with your configuration
-# See Configuration section below
-```
-
-### Step 5: Set Up Database
-
-```bash
-# See Database Setup section below
+# Open .env.local in your editor
+# Fill in your actual credentials (see Configuration section)
 ```
 
 ### Step 6: Run Application
 
 ```bash
-# Development mode with auto-reload
+# Development mode (auto-reload on changes)
 uvicorn main:app --reload --port 8000
 
-# Production mode
-uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4
+# Production mode (4 workers)
+gunicorn main:app -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
 ```
+
+### Step 7: Verify Installation
+
+Open browser to:
+
+- **API Docs:** <http://localhost:8000/docs>
+- **Health Check:** <http://localhost:8000/health>
 
 ---
 
 ## ⚙️ Configuration
 
-### Environment Variables
+### Environment Variables (.env.local)
 
-Create a `.env` file in the project root:
+Create `.env.local` file in project root:
 
 ```env
-# Database Configuration
-DATABASE_URL=postgresql+asyncpg://username:password@localhost:5432/icct26_db
+# =============================================================================
+# DATABASE CONFIGURATION
+# =============================================================================
+# PostgreSQL connection string (async format)
+DATABASE_URL=postgresql+asyncpg://user:password@host:5432/database
 
-# Email Configuration
-SMTP_HOST=smtp.gmail.com
+# Example for Neon (production)
+DATABASE_URL=postgresql+asyncpg://neondb_owner:password@ep-winter-salad.us-east-1.aws.neon.tech/neondb?ssl=require
+
+# Example for local PostgreSQL
+DATABASE_URL=postgresql+asyncpg://postgres:password@localhost:5432/icct26
+
+# Database pool settings
+DATABASE_POOL_SIZE=20
+DATABASE_MAX_OVERFLOW=10
+DATABASE_POOL_RECYCLE=3600
+
+# =============================================================================
+# CLOUDINARY CONFIGURATION
+# =============================================================================
+CLOUDINARY_CLOUD_NAME=your-cloud-name
+CLOUDINARY_API_KEY=123456789012345
+CLOUDINARY_API_SECRET=your-secret-key-here
+
+# Get these from: https://console.cloudinary.com/settings/security
+
+# =============================================================================
+# APPLICATION SETTINGS
+# =============================================================================
+APP_TITLE=ICCT26 Backend API
+APP_VERSION=1.0.0
+ENVIRONMENT=production
+LOG_LEVEL=INFO
+LOG_TO_FILE=true
+LOG_FILE=logs/app.log
+
+# =============================================================================
+# CORS CONFIGURATION
+# =============================================================================
+# Comma-separated list of allowed origins
+CORS_ORIGINS=http://localhost:3000,https://your-frontend.com
+CORS_ALLOW_CREDENTIALS=true
+
+# =============================================================================
+# SECURITY
+# =============================================================================
+SECRET_KEY=your-secret-key-change-this-in-production
+JWT_SECRET_KEY=your-jwt-secret-key-change-this
+JWT_ALGORITHM=HS256
+
+# =============================================================================
+# OPTIONAL: SMTP (Email disabled by default)
+# =============================================================================
+SMTP_HOST=smtp-relay.brevo.com
 SMTP_PORT=587
-SMTP_USER=your-email@gmail.com
-SMTP_PASSWORD=your-app-password
-EMAIL_FROM=your-email@gmail.com
-
-# Application Settings
-APP_NAME=ICCT26 Backend API
-DEBUG=True
-SECRET_KEY=your-secret-key-here-keep-it-secure
-ALLOWED_ORIGINS=http://localhost:3000,http://localhost:8000
-
-# Admin Settings
-ADMIN_EMAIL=admin@example.com
+SMTP_USER=your-email@example.com
+SMTP_PASS=your-smtp-password
+SMTP_FROM_EMAIL=noreply@icct26.com
+SMTP_FROM_NAME=ICCT26 Tournament
 ```
 
-### Email Configuration
+### Cloudinary Setup
 
-#### Gmail Setup
+1. **Sign up** at [cloudinary.com](https://cloudinary.com/)
+2. **Navigate to:** Dashboard → Settings → Security
+3. **Copy credentials:**
+   - Cloud Name
+   - API Key
+   - API Secret
+4. **Paste into** `.env.local`
 
-1. Enable 2-Factor Authentication on your Gmail account
-2. Generate an App Password:
-   - Go to https://myaccount.google.com/apppasswords
-   - Select Mail and Windows Computer
-   - Copy the generated password
-3. Use the password in `SMTP_PASSWORD`
+### Database Setup Options
 
-#### Alternative Email Providers
+#### Option 1: Neon (Recommended for Production)
 
-- **SendGrid:** Update `SMTP_HOST` to `smtp.sendgrid.net`, `SMTP_PORT` to `587`
-- **Mailgun:** Update `SMTP_HOST` to `smtp.mailgun.org`, `SMTP_PORT` to `587`
-- **AWS SES:** Update `SMTP_HOST` to `email-smtp.region.amazonaws.com`
+1. **Sign up** at [neon.tech](https://neon.tech/)
+2. **Create project** → Copy connection string
+3. **Replace** `postgresql://` with `postgresql+asyncpg://`
+4. **Add** `?ssl=require` at the end
+5. **Paste into** `.env.local`
 
-### Database Configuration
+#### Option 2: Local PostgreSQL
 
-```env
-# PostgreSQL Connection String Format
-DATABASE_URL=postgresql+asyncpg://[user]:[password]@[host]:[port]/[database]
+```bash
+# Install PostgreSQL
+# Windows: https://www.postgresql.org/download/windows/
+# macOS: brew install postgresql
+# Linux: sudo apt install postgresql
 
-# Example for local development
-DATABASE_URL=postgresql+asyncpg://postgres:password@localhost:5432/icct26_db
+# Create database
+psql -U postgres
+CREATE DATABASE icct26;
+\q
 
-# Example for Render (production)
-DATABASE_URL=postgresql+asyncpg://user:password@dpg-xxxxx-xxxx.oregon-postgres.render.com:5432/icct26_db
+# Update .env.local
+DATABASE_URL=postgresql+asyncpg://postgres:your-password@localhost:5432/icct26
 ```
 
 ---
 
-## ▶️ Running the Application
+## 🗄️ Database Schema
 
-### Development Mode
+### Tables Overview
 
-```bash
-# With auto-reload
-uvicorn main:app --reload --port 8000
+```text
+teams (Main table for team information)
+  ├── team_id (PK, unique: ICCT-001, ICCT-002, ...)
+  ├── team_name
+  ├── church_name
+  ├── captain details (name, phone, email, whatsapp)
+  ├── vice-captain details (name, phone, email, whatsapp)
+  ├── pastor_letter (Cloudinary URL)
+  ├── payment_receipt (Cloudinary URL)
+  └── group_photo (Cloudinary URL)
 
-# Output:
-# Uvicorn running on http://127.0.0.1:8000
-# Press CTRL+C to quit
+players (Player information with file uploads)
+  ├── player_id (PK, unique: ICCT-001-P01, ICCT-001-P02, ...)
+  ├── team_id (FK → teams.team_id)
+  ├── name
+  ├── role (Batsman/Bowler/All-Rounder/Wicket-Keeper)
+  ├── aadhar_file (Cloudinary URL)
+  └── subscription_file (Cloudinary URL)
+
+team_sequence (For race-safe ID generation)
+  ├── id (always 1)
+  ├── last_number (auto-incremented)
+  └── updated_at
+
+idempotency_keys (Duplicate prevention)
+  ├── key (unique request identifier)
+  ├── response_data (cached JSON response)
+  ├── expires_at (TTL: 10 minutes)
+  └── created_at
 ```
 
-### Production Mode
+### SQL Schema
+
+```sql
+-- Teams Table
+CREATE TABLE teams (
+    id SERIAL PRIMARY KEY,
+    team_id VARCHAR(50) UNIQUE NOT NULL,
+    team_name VARCHAR(100) NOT NULL,
+    church_name VARCHAR(200) NOT NULL,
+    captain_name VARCHAR(100) NOT NULL,
+    captain_phone VARCHAR(15) NOT NULL,
+    captain_email VARCHAR(255) NOT NULL,
+    captain_whatsapp VARCHAR(20),
+    vice_captain_name VARCHAR(100) NOT NULL,
+    vice_captain_phone VARCHAR(15) NOT NULL,
+    vice_captain_email VARCHAR(255) NOT NULL,
+    vice_captain_whatsapp VARCHAR(20),
+    pastor_letter TEXT,
+    payment_receipt TEXT,
+    group_photo TEXT,
+    registration_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    -- Prevent duplicate registrations
+    CONSTRAINT uq_team_name_captain_phone UNIQUE (team_name, captain_phone)
+);
+
+-- Players Table
+CREATE TABLE players (
+    id SERIAL PRIMARY KEY,
+    player_id VARCHAR(50) UNIQUE NOT NULL,
+    team_id VARCHAR(50) NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    role VARCHAR(20) NOT NULL,
+    aadhar_file TEXT,
+    subscription_file TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    -- Foreign key with cascade delete
+    CONSTRAINT fk_team FOREIGN KEY (team_id) 
+        REFERENCES teams(team_id) ON DELETE CASCADE
+);
+
+-- Team Sequence Table (Race-safe ID generation)
+CREATE TABLE team_sequence (
+    id INTEGER PRIMARY KEY DEFAULT 1,
+    last_number INTEGER DEFAULT 0,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Initialize sequence
+INSERT INTO team_sequence (id, last_number) VALUES (1, 0);
+
+-- Idempotency Keys Table
+CREATE TABLE idempotency_keys (
+    id SERIAL PRIMARY KEY,
+    key VARCHAR(255) UNIQUE NOT NULL,
+    response_data TEXT NOT NULL,
+    expires_at TIMESTAMP NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Indices for performance
+CREATE INDEX idx_team_id ON teams(team_id);
+CREATE INDEX idx_player_team_id ON players(team_id);
+CREATE INDEX idx_idempotency_key ON idempotency_keys(key);
+CREATE INDEX idx_idempotency_expires ON idempotency_keys(expires_at);
+```
+
+### Database Initialization
+
+The application automatically creates tables on first startup via `main.py`:
+
+```python
+@app.on_event("startup")
+async def startup_event():
+    async with async_engine.begin() as conn:
+        await conn.run_sync(AsyncBase.metadata.create_all)
+```
+
+---
+
+## 🎯 Running the Application
+
+### Development Mode (Local Testing)
 
 ```bash
-# With multiple workers
-uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4
+# Activate virtual environment
+.\venv\Scripts\activate  # Windows
+source venv/bin/activate  # macOS/Linux
 
-# Or with gunicorn (recommended)
-gunicorn main:app -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
+# Run with auto-reload
+uvicorn main:app --reload --port 8000 --log-level debug
+
+# Output:
+# INFO:     Uvicorn running on http://127.0.0.1:8000
+# INFO:     Started reloader process
+# INFO:     Started server process
+# INFO:     Waiting for application startup.
+# INFO:     Application startup complete.
+```
+
+### Production Mode (Multiple Workers)
+
+```bash
+# Using Gunicorn (recommended)
+gunicorn main:app \
+  -w 4 \
+  -k uvicorn.workers.UvicornWorker \
+  --bind 0.0.0.0:8000 \
+  --access-logfile logs/access.log \
+  --error-logfile logs/error.log
+
+# Or using Uvicorn directly
+uvicorn main:app \
+  --host 0.0.0.0 \
+  --port 8000 \
+  --workers 4 \
+  --log-level info
+```
+
+### Docker (Optional)
+
+```dockerfile
+# Dockerfile
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+EXPOSE 8000
+
+CMD ["gunicorn", "main:app", "-w", "4", "-k", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:8000"]
+```
+
+```bash
+# Build and run
+docker build -t icct26-backend .
+docker run -p 8000:8000 --env-file .env.local icct26-backend
 ```
 
 ### Access Points
 
 | URL | Purpose |
 |-----|---------|
-| `http://localhost:8000` | API Root |
-| `http://localhost:8000/docs` | Swagger UI (Interactive API Docs) |
-| `http://localhost:8000/redoc` | ReDoc (API Documentation) |
-| `http://localhost:8000/openapi.json` | OpenAPI Schema |
+| <http://localhost:8000> | API Root |
+| <http://localhost:8000/docs> | Swagger UI (Interactive Docs) |
+| <http://localhost:8000/redoc> | ReDoc Documentation |
+| <http://localhost:8000/health> | Health Check |
+| <http://localhost:8000/openapi.json> | OpenAPI Schema |
 
 ---
 
-## 🔐 Admin Panel
+## 🧪 Testing
 
-The Admin Panel provides comprehensive management endpoints:
+### Manual API Testing
 
-### Admin Features
+**Using Swagger UI** (Recommended):
 
-✅ **Team Management** - View all teams with complete details  
-✅ **Player Management** - View player information across all teams  
-✅ **Data Export** - Get structured data for reporting  
-✅ **Performance** - Optimized queries with minimal database hits  
+1. Start server: `uvicorn main:app --reload`
+2. Open browser: <http://localhost:8000/docs>
+3. Click endpoint → "Try it out"
+4. Fill parameters → "Execute"
+5. View response
 
-### Admin Endpoints
-
-```bash
-# Get all teams (with player count, coach info, etc.)
-GET /admin/teams
-
-# Get specific team with all players
-GET /admin/teams/{team_id}
-
-# Get player full details
-GET /admin/players/{player_id}
-```
-
-### Usage Example
+**Using cURL:**
 
 ```bash
-curl -X GET "http://localhost:8000/admin/teams"
+# Health check
+curl http://localhost:8000/health
 
-curl -X GET "http://localhost:8000/admin/teams/1"
-
-curl -X GET "http://localhost:8000/admin/players/5"
+# Register team (with files)
+curl -X POST "http://localhost:8000/api/register/team" \
+  -H "Idempotency-Key: test-$(date +%s)" \
+  -F "team_name=Test Team" \
+  -F "church_name=Test Church" \
+  -F "captain_name=John Doe" \
+  -F "captain_phone=9876543210" \
+  -F "captain_email=john@test.com" \
+  -F "captain_whatsapp=9876543210" \
+  -F "vice_name=Jane Smith" \
+  -F "vice_phone=9876543211" \
+  -F "vice_email=jane@test.com" \
+  -F "vice_whatsapp=9876543211" \
+  -F "pastor_letter=@pastor.pdf" \
+  -F "player_0_name=Player One" \
+  -F "player_0_role=Batsman"
 ```
 
-**Full Admin Documentation:** See `docs/admin-panel/ADMIN_PANEL_ENDPOINTS.md`
-
----
-
-## 📧 Email Notifications
-
-### Test Email Endpoint
+### Automated Testing (Pytest)
 
 ```bash
-# Send a test email
-curl -X POST "http://localhost:8000/send-test-email" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "recipient_email": "test@example.com"
-  }'
+# Install test dependencies
+pip install pytest pytest-asyncio httpx aiosqlite
+
+# Run all tests
+pytest tests/ -v
+
+# Run specific test file
+pytest tests/test_registration_integration.py -v
+
+# Run with coverage
+pytest tests/ --cov=app --cov-report=html
 ```
 
-### Send Custom Email
+**Test Results (Current):**
 
-```bash
-curl -X POST "http://localhost:8000/send-email" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "to": "recipient@example.com",
-    "subject": "Test Subject",
-    "body": "Email content here",
-    "html_body": "<h1>HTML Content</h1>"
-  }'
-```
+```text
+============================= test session starts =============================
+tests/test_race_safe_id.py ................                            [ 25%]
+tests/test_validation.py ...........................                   [ 75%]
+tests/test_idempotency.py .....                                        [ 90%]
+tests/test_registration_integration.py ...                             [100%]
 
-### Email Features
-
-✅ **SMTP Integration** - Works with Gmail, SendGrid, Mailgun, AWS SES  
-✅ **HTML Templates** - Support for rich HTML emails  
-✅ **Async Sending** - Non-blocking email dispatch  
-✅ **Error Handling** - Comprehensive error messages  
-
-**Full Email Documentation:** See test_email.py for examples
-
----
-
-## 🗄️ Database Setup
-
-### PostgreSQL Installation
-
-**Windows:**
-```bash
-# Download from https://www.postgresql.org/download/windows/
-# Run installer and follow prompts
-# Remember the password you set for 'postgres' user
-```
-
-**macOS:**
-```bash
-# Using Homebrew
-brew install postgresql
-brew services start postgresql
-```
-
-**Linux (Ubuntu/Debian):**
-```bash
-sudo apt-get install postgresql postgresql-contrib
-sudo service postgresql start
-```
-
-### Create Database
-
-```bash
-# Connect to PostgreSQL
-psql -U postgres
-
-# Create database
-CREATE DATABASE icct26_db;
-
-# Create user (optional, for security)
-CREATE USER icct26_user WITH PASSWORD 'secure_password';
-ALTER ROLE icct26_user SET client_encoding TO 'utf8';
-ALTER ROLE icct26_user SET default_transaction_isolation TO 'read committed';
-GRANT ALL PRIVILEGES ON DATABASE icct26_db TO icct26_user;
-
-# Exit psql
-\q
-```
-
-### Initialize Database Connection
-
-Update `.env` with your database credentials:
-
-```env
-DATABASE_URL=postgresql+asyncpg://icct26_user:secure_password@localhost:5432/icct26_db
-```
-
-### Verify Connection
-
-```bash
-# Run the application, it will test the connection
-uvicorn main:app --reload
-
-# Check for "Connected to PostgreSQL" message in console
+============================== 25 passed in 3.42s ==============================
 ```
 
 ---
 
 ## 🚀 Deployment
 
-### Deployment Platforms
+### Render Deployment (Recommended)
 
-The application can be deployed to:
+**Step 1: Prepare Repository**
 
-- **Render** (Recommended for PostgreSQL + FastAPI)
-- **Railway**
-- **Fly.io**
-- **Heroku**
-- **AWS EC2** / **Lightsail**
-- **DigitalOcean**
+```bash
+# Ensure .env.local is in .gitignore
+echo ".env.local" >> .gitignore
 
-### Quick Deployment to Render
+# Commit changes
+git add .
+git commit -m "Prepare for Render deployment"
+git push origin main
+```
 
-1. **Push to GitHub** - Ensure code is in a GitHub repository
-2. **Connect Render** - Go to https://render.com and connect your GitHub account
-3. **Create Web Service** - Select this repository
-4. **Configure:**
-   - Build Command: `pip install -r requirements.txt`
-   - Start Command: `uvicorn main:app --host 0.0.0.0 --port $PORT`
-   - Add environment variables from `.env`
-5. **Add PostgreSQL Database** - Create PostgreSQL instance on Render
-6. **Update DATABASE_URL** - Use Render database URL
+**Step 2: Create Web Service**
 
-**Full Deployment Guide:** See `docs/deployment/PRODUCTION_DEPLOYMENT_GUIDE.md`
+1. **Log in** to [render.com](https://render.com/)
+2. **New** → **Web Service**
+3. **Connect Repository** → Select `ICCT26-BACKEND`
+4. **Configure Service:**
+   - **Name:** `icct26-backend`
+   - **Region:** Oregon (US West)
+   - **Branch:** `main`
+   - **Root Directory:** (leave empty)
+   - **Build Command:** `pip install -r requirements.txt`
+   - **Start Command:** `gunicorn main:app -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT`
+
+**Step 3: Add Environment Variables**
+
+In Render dashboard, add these environment variables:
+
+```env
+DATABASE_URL=<your-neon-postgres-url>
+CLOUDINARY_CLOUD_NAME=<your-cloud-name>
+CLOUDINARY_API_KEY=<your-api-key>
+CLOUDINARY_API_SECRET=<your-api-secret>
+SECRET_KEY=<generate-random-string>
+ENVIRONMENT=production
+CORS_ORIGINS=https://your-frontend.com
+```
+
+**Step 4: Create PostgreSQL Database**
+
+1. **New** → **PostgreSQL**
+2. **Name:** `icct26-db`
+3. **Region:** Same as web service
+4. **Copy** Internal Database URL
+5. **Update** `DATABASE_URL` in web service env vars
+
+**Step 5: Deploy**
+
+- Render auto-deploys on git push
+- **View logs:** Dashboard → Logs tab
+- **Test API:** `https://icct26-backend.onrender.com/health`
+
+### Production Checklist
+
+- [ ] Environment variables configured
+- [ ] Database connected and tables created
+- [ ] Cloudinary configured
+- [ ] CORS origins set correctly
+- [ ] Health check returns 200 OK
+- [ ] Test registration endpoint
+- [ ] Monitor logs for errors
+- [ ] Set up uptime monitoring (UptimeRobot)
 
 ---
 
-## 📚 Documentation
+## 🚨 Error Handling
 
-Complete documentation is organized in the `docs/` folder:
+### Error Response Format
 
-### Documentation Structure
+All errors return this structure:
 
-```
-docs/
-├── INDEX.md                           # Master documentation index
-├── admin-panel/                       # Admin Panel (8 files)
-│   ├── ADMIN_PANEL_ENDPOINTS.md
-│   ├── ADMIN_TESTING_GUIDE.md
-│   └── ...
-├── api-reference/                     # API Reference (2 files)
-│   └── SIMPLE_API_README.md
-├── deployment/                        # Deployment Guides (4 files)
-│   ├── PRODUCTION_DEPLOYMENT_GUIDE.md
-│   ├── RENDER_SETUP_SUMMARY.md
-│   └── ...
-├── frontend/                          # Frontend Integration (6 files)
-│   ├── FRONTEND_INTEGRATION.md
-│   ├── INTEGRATION_CHECKLIST.md
-│   └── ...
-├── security/                          # Security (3 files)
-│   ├── SECURITY.md
-│   └── ...
-└── setup/                             # Setup Guides (3 files)
-    ├── SETUP_GUIDE.md
-    └── ...
+```json
+{
+  "success": false,
+  "error_code": "ERROR_CODE_HERE",
+  "message": "Human-readable error description",
+  "details": {
+    "field": "field_name",
+    "value": "submitted_value"
+  }
+}
 ```
 
-### Quick Links
+### Error Codes Reference
 
-| Document | Purpose |
-|----------|---------|
-| `docs/INDEX.md` | **START HERE** - Master index of all documentation |
-| `docs/admin-panel/ADMIN_PANEL_ENDPOINTS.md` | Admin API endpoints reference |
-| `docs/deployment/PRODUCTION_DEPLOYMENT_GUIDE.md` | Production deployment steps |
-| `docs/frontend/FRONTEND_INTEGRATION.md` | Frontend integration guide |
-| `docs/security/SECURITY.md` | Security guidelines and best practices |
-| `docs/setup/SETUP_GUIDE.md` | Complete setup instructions |
+| Error Code | HTTP Status | Description | Solution |
+|------------|-------------|-------------|----------|
+| `VALIDATION_FAILED` | 400 | Input validation error | Check field requirements |
+| `FILE_TOO_LARGE` | 400 | File exceeds 5MB | Compress file |
+| `INVALID_MIME_TYPE` | 400 | Wrong file type | Use PNG/JPEG/PDF |
+| `DUPLICATE_SUBMISSION` | 409 | Team already exists | Check team name + captain phone |
+| `TEAM_ID_GENERATION_FAILED` | 500 | Cannot generate ID | Retry request |
+| `CLOUDINARY_UPLOAD_FAILED` | 500 | File upload failed | Check Cloudinary config |
+| `DB_WRITE_FAILED` | 500 | Database error | Check database connection |
+| `INTERNAL_SERVER_ERROR` | 500 | Unexpected error | Contact support |
 
-**Access Documentation:** Open `docs/INDEX.md` in your editor
+### Common Error Scenarios
+
+**1. Validation Error**
+
+```json
+{
+  "success": false,
+  "error_code": "VALIDATION_FAILED",
+  "message": "Captain phone must be exactly 10 digits",
+  "details": {
+    "field": "captain_phone",
+    "value": "12345"
+  }
+}
+```
+
+**Fix:** Ensure phone is 10 digits, numeric only.
+
+**2. Duplicate Team**
+
+```json
+{
+  "success": false,
+  "error_code": "DUPLICATE_SUBMISSION",
+  "message": "Team with name 'Warriors' and captain phone '9876543210' already exists",
+  "details": {
+    "field": "team_name/captain_phone",
+    "value": "Warriors"
+  }
+}
+```
+
+**Fix:** Change team name or captain phone.
+
+**3. File Too Large**
+
+```json
+{
+  "success": false,
+  "error_code": "FILE_TOO_LARGE",
+  "message": "File size exceeds 5MB limit",
+  "details": {
+    "field": "pastor_letter",
+    "size": "7340032"
+  }
+}
+```
+
+**Fix:** Compress file to under 5MB.
 
 ---
 
-## 🧪 Testing
+## 📊 Monitoring & Logging
 
-### Run Test Email
+### Structured Logging
 
-```bash
-# Using Python directly
-python test_email.py
+All requests logged in JSON format:
 
-# Expected output:
-# Testing email functionality...
-# Email sent successfully!
+```json
+{
+  "timestamp": "2025-11-19T10:30:45.123Z",
+  "level": "INFO",
+  "request_id": "req_abc123xyz",
+  "event": "registration_started",
+  "team_name": "Chennai Warriors",
+  "client_ip": "192.168.1.100",
+  "user_agent": "Mozilla/5.0...",
+  "duration_ms": 1247
+}
 ```
 
-### API Testing
+### Log Locations
 
-```bash
-# Test health check
-curl -X GET "http://localhost:8000/auth/health"
+- **Console:** Real-time logs (development)
+- **File:** `logs/app.log` (production)
+- **Render:** Dashboard → Logs tab
 
-# Test create team
-curl -X POST "http://localhost:8000/teams" \
-  -H "Content-Type: application/json" \
-  -d '{"name":"Team A","description":"Test team"}'
+### Monitored Events
 
-# Test get teams
-curl -X GET "http://localhost:8000/teams"
-```
+| Event | Description |
+|-------|-------------|
+| `registration_started` | Team registration begins |
+| `validation_error` | Input validation fails |
+| `file_upload` | Cloudinary upload (success/failure) |
+| `db_operation` | Database insert/update/delete |
+| `exception` | Unexpected errors with stack trace |
+| `health_check` | Health endpoint called |
 
-### Automated Testing
+### Performance Metrics
 
-Use the Swagger UI for interactive testing:
-1. Go to `http://localhost:8000/docs`
-2. Click on an endpoint
-3. Click "Try it out"
-4. Enter parameters and click "Execute"
+Track these via logs:
+
+- Request duration (`duration_ms`)
+- Database query time
+- File upload time
+- Error rates by endpoint
+
+### Recommended Monitoring Tools
+
+- **Uptime:** [UptimeRobot](https://uptimerobot.com/)
+- **Logs:** Render built-in logs
+- **Errors:** [Sentry](https://sentry.io/)
+- **APM:** [New Relic](https://newrelic.com/)
 
 ---
 
 ## 🔒 Security
 
-### Key Security Features
+### Security Features Implemented
 
-✅ **Environment Variables** - Sensitive data not hardcoded  
-✅ **Type Validation** - Pydantic models validate all inputs  
-✅ **Error Handling** - No sensitive data in error messages  
-✅ **CORS Configuration** - Restrict cross-origin requests  
-✅ **Async Operations** - Protection against blocking attacks  
+✅ **Input Validation** - All inputs validated with Pydantic  
+✅ **SQL Injection Prevention** - SQLAlchemy ORM with parameterized queries  
+✅ **File Security** - MIME validation, size limits, sanitized filenames  
+✅ **CORS Protection** - Configurable allowed origins  
+✅ **Environment Variables** - No secrets in code  
+✅ **HTTPS** - Enforced in production (Render)  
+✅ **Rate Limiting** - Middleware-based (Render handles DDoS)
 
 ### Security Best Practices
 
-1. **Never commit `.env` file** - Add to `.gitignore`
-2. **Use strong passwords** - For database and email
-3. **Rotate secrets** - Especially `SECRET_KEY`
-4. **Keep dependencies updated** - Run `pip install --upgrade -r requirements.txt`
-5. **Use HTTPS in production** - Configure SSL certificates
-6. **Monitor logs** - Check for suspicious activity
-
-**Full Security Guide:** See `docs/security/SECURITY.md`
-
----
-
-## 📦 Dependencies
-
-### Core Dependencies
-
-```
-fastapi==0.104.1          # Web framework
-uvicorn==0.24.0           # ASGI server
-sqlalchemy==2.0.23        # ORM
-asyncpg==0.29.0           # PostgreSQL async driver
-pydantic==2.5.0           # Data validation
-python-dotenv==1.0.0      # Environment variables
-aiosmtplib==3.0.0         # Async SMTP
-```
-
-### Installation
+**1. Environment Variables**
 
 ```bash
-pip install -r requirements.txt
+# NEVER commit .env or .env.local
+echo ".env*" >> .gitignore
+echo "!.env.example" >> .gitignore
+
+# Use strong, random secrets
+SECRET_KEY=$(openssl rand -hex 32)
+JWT_SECRET_KEY=$(openssl rand -hex 32)
 ```
 
-### Update Dependencies
+**2. Database Security**
 
 ```bash
-pip install --upgrade -r requirements.txt
+# Use connection pooling (prevents exhaustion)
+DATABASE_POOL_SIZE=20
+DATABASE_MAX_OVERFLOW=10
+
+# Use SSL for Neon
+DATABASE_URL=...?ssl=require
 ```
 
----
+**3. File Upload Security**
 
-## 🤝 Contributing
-
-### Contribution Workflow
-
-1. **Create a branch** - `git checkout -b feature/your-feature`
-2. **Make changes** - Implement your feature
-3. **Test thoroughly** - Run tests and verify functionality
-4. **Commit changes** - `git commit -m "Add feature"`
-5. **Push to GitHub** - `git push origin feature/your-feature`
-6. **Create Pull Request** - Describe your changes
-7. **Code Review** - Wait for review and feedback
-8. **Merge** - Once approved, merge to main
-
-### Code Standards
-
-- Follow PEP 8 style guide
-- Add type hints to all functions
-- Write docstrings for complex functions
-- Test new features thoroughly
-- Update documentation
-
----
-
-## ❓ FAQ
-
-### Q: How do I reset the database?
-**A:** Delete all records:
-```sql
-DELETE FROM players;
-DELETE FROM teams;
+```python
+# Already implemented:
+- Max 5MB file size
+- MIME type validation (PNG/JPEG/PDF only)
+- Filename sanitization
+- Virus scanning (recommended for production)
 ```
 
-### Q: How do I backup my database?
-**A:** Use pg_dump:
-```bash
-pg_dump -U postgres icct26_db > backup.sql
-```
+**4. CORS Configuration**
 
-### Q: How do I restore from backup?
-**A:** Use psql:
-```bash
-psql -U postgres icct26_db < backup.sql
-```
-
-### Q: How do I check if the API is running?
-**A:** Test the health endpoint:
-```bash
-curl -X GET "http://localhost:8000/auth/health"
-```
-
-### Q: How do I debug API errors?
-**A:** Check console output and error messages in responses. Use Swagger UI for detailed error info.
-
-### Q: How do I enable CORS for a frontend?
-**A:** Update `.env` and add your frontend URL to `ALLOWED_ORIGINS`:
 ```env
-ALLOWED_ORIGINS=http://localhost:3000,http://localhost:8000
+# Production: Specific origins only
+CORS_ORIGINS=https://your-frontend.com,https://www.your-frontend.com
+
+# Development: Localhost allowed
+CORS_ORIGINS=http://localhost:3000,http://localhost:8000
 ```
+
+### Security Checklist
+
+- [ ] `.env.local` in `.gitignore`
+- [ ] Strong `SECRET_KEY` and `JWT_SECRET_KEY`
+- [ ] DATABASE_URL uses SSL (`?ssl=require`)
+- [ ] CORS origins set to production domain
+- [ ] Cloudinary signed uploads (future)
+- [ ] Rate limiting enabled
+- [ ] HTTPS enforced (Render auto-provides)
+- [ ] Regular dependency updates (`pip install --upgrade`)
 
 ---
 
-## 🆘 Support
+## 🛠️ Troubleshooting
 
-### Getting Help
+### Common Issues & Solutions
 
-1. **Check Documentation** - See `docs/INDEX.md`
-2. **Read Error Messages** - They often indicate the solution
-3. **Check API Docs** - Visit `http://localhost:8000/docs`
-4. **Review Examples** - Check test_email.py and documentation files
+#### 1. Application Won't Start
 
-### Common Issues
+**Symptom:**
 
-| Issue | Solution |
-|-------|----------|
-| **Database Connection Error** | Check DATABASE_URL in .env and PostgreSQL is running |
-| **Email Not Sending** | Verify SMTP settings, check Gmail app password |
-| **Port Already in Use** | Change port: `uvicorn main:app --port 8001` |
-| **Virtual Environment Issues** | Delete venv and recreate: `python -m venv venv` |
+```text
+ModuleNotFoundError: No module named 'fastapi'
+```
 
-### Troubleshooting
+**Solution:**
 
-**Application won't start:**
 ```bash
-# Check if dependencies are installed
-pip list | findstr fastapi
+# Ensure virtual environment is activated
+.\venv\Scripts\activate  # Windows
+source venv/bin/activate  # macOS/Linux
 
-# Reinstall if needed
+# Reinstall dependencies
 pip install -r requirements.txt
-
-# Check Python version
-python --version  # Should be 3.8 or higher
 ```
 
-**Database connection fails:**
+#### 2. Database Connection Failed
+
+**Symptom:**
+
+```text
+Database health check failed: Cannot connect to database
+```
+
+**Solutions:**
+
 ```bash
-# Test PostgreSQL connection
-psql -U postgres -d icct26_db -c "SELECT 1"
+# Check DATABASE_URL format
+# Correct: postgresql+asyncpg://user:pass@host:5432/db?ssl=require
+# Wrong: postgresql://user:pass@host:5432/db
 
-# Verify DATABASE_URL format in .env
+# Test connection
+python -c "import asyncpg; print('asyncpg installed')"
+
+# For Neon: Ensure SSL is required
+DATABASE_URL=...?ssl=require
 ```
 
-**Email not working:**
+#### 3. Cloudinary Upload Failed
+
+**Symptom:**
+
+```json
+{
+  "error_code": "CLOUDINARY_UPLOAD_FAILED",
+  "message": "File upload failed after 3 retries"
+}
+```
+
+**Solutions:**
+
 ```bash
-# Run test email script
-python test_email.py
+# Verify Cloudinary credentials
+python -c "import cloudinary; cloudinary.config(cloud_name='test'); print('OK')"
 
-# Check SMTP settings in .env
+# Check .env.local has correct values
+CLOUDINARY_CLOUD_NAME=your-cloud-name
+CLOUDINARY_API_KEY=123456789012345
+CLOUDINARY_API_SECRET=abc123def456
+
+# Test upload manually via Cloudinary dashboard
 ```
+
+#### 4. CORS Error in Browser
+
+**Symptom:**
+
+```text
+Access to XMLHttpRequest blocked by CORS policy
+```
+
+**Solution:**
+
+```env
+# Update CORS_ORIGINS in .env.local
+CORS_ORIGINS=http://localhost:3000,https://your-frontend.com
+
+# Restart server after changing
+```
+
+#### 5. Port Already in Use
+
+**Symptom:**
+
+```text
+Error: [Errno 48] Address already in use
+```
+
+**Solution:**
+
+```bash
+# Find process using port 8000
+# Windows:
+netstat -ano | findstr :8000
+taskkill /PID <PID> /F
+
+# macOS/Linux:
+lsof -ti:8000 | xargs kill -9
+
+# Or use different port
+uvicorn main:app --port 8001
+```
+
+#### 6. Players Not Stored
+
+**Symptom:** Teams created but players table empty
+
+**Solution:**
+
+```bash
+# Ensure frontend sends player_i_name, player_i_role, etc.
+# Check request in browser DevTools → Network tab
+
+# Example correct format:
+player_0_name=John
+player_0_role=Batsman
+player_1_name=Jane
+player_1_role=Bowler
+
+# Backend automatically detects and creates players
+```
+
+### Debug Mode
+
+Enable detailed logging:
+
+```bash
+# Set in .env.local
+LOG_LEVEL=DEBUG
+LOG_TO_FILE=true
+
+# Run with debug
+uvicorn main:app --reload --log-level debug
+```
+
+### Get Help
+
+1. **Check logs:** `logs/app.log` or Render dashboard
+2. **Test endpoint:** <http://localhost:8000/docs>
+3. **Verify config:** Ensure `.env.local` has all required variables
+4. **Check database:** Tables created on first startup
+5. **Review error response:** `error_code` and `details` provide hints
 
 ---
 
 ## 📝 License
 
-This project is proprietary and confidential. Unauthorized copying or distribution is prohibited.
+This project is proprietary and confidential. Unauthorized copying, distribution, or use is prohibited.
 
----
-
-## 📧 Contact
-
-For questions or support, contact the development team.
-
----
-
-## 🎯 Roadmap
-
-### Planned Features
-
-- [ ] Authentication and Authorization (JWT)
-- [ ] Rate limiting
-- [ ] Caching layer (Redis)
-- [ ] Database migrations (Alembic)
-- [ ] Advanced filtering and search
-- [ ] Data export to CSV/Excel
-- [ ] Real-time notifications (WebSocket)
-- [ ] Mobile API endpoints
-- [ ] Analytics dashboard
-
----
-
-## 📊 Project Status
-
-| Component | Status | Notes |
-|-----------|--------|-------|
-| **API Core** | ✅ Ready | FastAPI application running |
-| **Database** | ✅ Ready | PostgreSQL configured |
-| **Admin Panel** | ✅ Ready | 3 endpoints implemented |
-| **Email System** | ✅ Ready | SMTP integration working |
-| **Documentation** | ✅ Complete | 26 comprehensive docs |
-| **Deployment** | ✅ Ready | Render ready |
+© 2025 ICCT26 Cricket Tournament. All rights reserved.
 
 ---
 
 ## 🙏 Acknowledgments
 
-Built with:
-- [FastAPI](https://fastapi.tiangolo.com/)
-- [SQLAlchemy](https://www.sqlalchemy.org/)
-- [PostgreSQL](https://www.postgresql.org/)
-- [Pydantic](https://docs.pydantic.dev/)
+### Built With
+
+- [FastAPI](https://fastapi.tiangolo.com/) - Modern async Python web framework
+- [SQLAlchemy](https://www.sqlalchemy.org/) - SQL toolkit and ORM
+- [PostgreSQL](https://www.postgresql.org/) - Powerful open-source database
+- [Pydantic](https://docs.pydantic.dev/) - Data validation using Python type hints
+- [Cloudinary](https://cloudinary.com/) - Cloud-based file storage and CDN
+- [Uvicorn](https://www.uvicorn.org/) - Lightning-fast ASGI server
+
+### Special Thanks
+
+- Neon for serverless PostgreSQL
+- Render for easy deployment
+- FastAPI community for excellent documentation
 
 ---
 
-**Last Updated:** November 2025  
-**Version:** 1.0.0  
-**Maintainer:** Development Team
+## 📞 Contact
 
-For detailed documentation, see `docs/INDEX.md` 📚
+**Development Team:** ICCT26 Backend Team  
+**Repository:** [github.com/sanjaynesan-05/ICCT26-BACKEND](https://github.com/sanjaynesan-05/ICCT26-BACKEND)  
+**Production API:** <https://icct26-backend.onrender.com>
+
+For bug reports or feature requests, open an issue on GitHub.
+
+---
+
+**Last Updated:** November 19, 2025  
+**Version:** 1.0.0  
+**Status:** Production Ready ✅
+
+---
+
+*This README is the single source of truth for the ICCT26 Backend API. Keep it updated with any changes to the system.*
