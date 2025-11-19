@@ -164,6 +164,15 @@ async def register_team_production_hardened(
         logger.info(f"[{request_id}] Step 3: Extracting players from form...")
         form = await request.form()
         
+        # 🔍 DEBUG: Log all form keys to help debug missing files
+        form_keys = list(form.keys())
+        logger.info(f"[{request_id}] 📋 Received {len(form_keys)} form keys")
+        player_file_keys = [k for k in form_keys if 'player_' in k and ('aadhar' in k or 'subscription' in k)]
+        if player_file_keys:
+            logger.info(f"[{request_id}] 📁 Player file keys detected: {player_file_keys}")
+        else:
+            logger.warning(f"[{request_id}] ⚠️ NO player file keys found in form data!")
+        
         # Helper to safely get form values
         def get_form_value(key: str) -> Optional[str]:
             val = form.get(key)
@@ -196,6 +205,11 @@ async def register_team_production_hardened(
             player_role = get_form_value(role_key)
             aadhar_file = get_form_file(aadhar_key)
             subscription_file = get_form_file(subscription_key)
+            
+            # 🔍 DEBUG: Log file detection
+            logger.info(f"[{request_id}] Player {player_index}: name={player_name}, role={player_role}, "
+                       f"aadhar={'PRESENT' if aadhar_file else 'MISSING'}, "
+                       f"subscription={'PRESENT' if subscription_file else 'MISSING'}")
             
             # Validate player data
             try:
