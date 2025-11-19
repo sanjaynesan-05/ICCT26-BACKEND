@@ -1,31 +1,19 @@
-"""
-PRODUCTION REGISTRATION ENDPOINT - HARDENED & SECURED
-======================================================
-Complete production-grade registration with all security features:
-- Race-safe sequential team IDs
-- Strong input validation
-- Duplicate submission protection
-- File size limits & MIME validation
-- Retry logic for uploads and email
-- Unified error responses
-- Structured logging
-- Comprehensive monitoring
-"""
-
+# (put this code where your existing register_team_production_hardened function lives)
 from fastapi import APIRouter, Form, File, UploadFile, HTTPException, Depends, Header, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List, Any
 import json
 import logging
+import re
 
 # Database
 from database import get_db_async
 from models import Team, Player
 
-# Utilities
+# Utilities (your existing helpers)
 from app.utils.race_safe_team_id import generate_next_team_id
 from app.utils.validation import (
     validate_name,
@@ -60,209 +48,184 @@ async def register_team_production_hardened(
     # ========== TEAM INFORMATION ==========
     team_name: str = Form(..., description="Team name"),
     church_name: str = Form(..., description="Church name"),
-    
+
     # ========== CAPTAIN INFORMATION ==========
     captain_name: str = Form(..., description="Captain full name"),
     captain_phone: str = Form(..., description="Captain phone number"),
     captain_email: str = Form(..., description="Captain email address"),
     captain_whatsapp: str = Form(..., description="Captain WhatsApp number"),
-    
+
     # ========== VICE-CAPTAIN INFORMATION ==========
     vice_name: str = Form(..., description="Vice-captain full name"),
     vice_phone: str = Form(..., description="Vice-captain phone number"),
     vice_email: str = Form(..., description="Vice-captain email address"),
     vice_whatsapp: str = Form(..., description="Vice-captain WhatsApp number"),
-    
-    # ========== PLAYERS (JSON ARRAY) ==========
-    players_json: Optional[str] = Form(
-        None,
-        description="JSON array of players: [{\"name\": \"...\", \"role\": \"...\"}]"
-    ),
-    
+
     # ========== FILE UPLOADS (REQUIRED) ==========
     pastor_letter: UploadFile = File(..., description="Pastor recommendation letter"),
-    
+
     # ========== FILE UPLOADS (OPTIONAL) ==========
     payment_receipt: Optional[UploadFile] = File(None, description="Payment receipt"),
     group_photo: Optional[UploadFile] = File(None, description="Team group photo"),
-    
+
     # ========== IDEMPOTENCY ==========
     idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
-    
+
     # ========== DATABASE SESSION ==========
     db: AsyncSession = Depends(get_db_async)
 ):
     """
-    🏏 PRODUCTION TEAM REGISTRATION ENDPOINT (HARDENED)
+    🏏 PRODUCTION TEAM REGISTRATION ENDPOINT
     
-    **Security Features:**
-    - Race-safe sequential team IDs
-    - Strong input validation
-    - Duplicate submission protection
-    - File size limits (5MB)
-    - MIME type validation
-    - Retry logic for uploads
-    - Structured logging
+    Accepts team info + dynamic player fields:
+    - player_0_name, player_0_role, player_0_aadhar_file, player_0_subscription_file
+    - player_1_name, player_1_role, player_1_aadhar_file, player_1_subscription_file
+    - etc.
     
-    **Required Form Fields:**
-    - Team: team_name, church_name
-    - Captain: captain_name, captain_phone, captain_email, captain_whatsapp
-    - Vice-Captain: vice_name, vice_phone, vice_email, vice_whatsapp
-    
-    **Required Files:**
-    - pastor_letter (PNG/JPEG/PDF, max 5MB)
-    
-    **Optional:**
-    - payment_receipt, group_photo
-    - players_json (JSON string)
-    - Idempotency-Key header
-    
-    **Response (201):**
-    ```json
-    {
-      "success": true,
-      "team_id": "ICCT-001",
-      "message": "Team registered successfully",
-      "email_sent": true
-    }
-    ```
-    
-    **Error Codes:**
-    - VALIDATION_FAILED: Invalid input
-    - DUPLICATE_SUBMISSION: Team already exists
-    - FILE_TOO_LARGE: File exceeds 5MB
-    - INVALID_MIME_TYPE: Wrong file type
-    - DB_WRITE_FAILED: Database error
-    - CLOUDINARY_UPLOAD_FAILED: Upload failed
-    - INTERNAL_SERVER_ERROR: Unexpected error
+    NO EMAIL SENDING - removed as per requirements
     """
-    
-    # Get request ID for logging
-    request_id = getattr(request.state, 'request_id', 'unknown')
-    client_ip = request.client.host if request.client else 'unknown'
-    
+    request_id = getattr(request.state, "request_id", "unknown")
+    client_ip = request.client.host if request.client else "unknown"
+
     try:
         # ====================================================================
-        # STEP 1: CHECK IDEMPOTENCY KEY
+        # STEP 1: IDEMPOTENCY CHECK
         # ====================================================================
         if idempotency_key:
             logger.info(f"[{request_id}] Checking idempotency key: {idempotency_key}")
             existing_response = await check_idempotency_key(db, idempotency_key)
-            
             if existing_response:
-                logger.warning(f"[{request_id}] Duplicate submission detected")
-                return JSONResponse(
-                    status_code=409,
-                    content=json.loads(existing_response) if existing_response else {
-                        "success": False,
-                        "error_code": ErrorCode.DUPLICATE_SUBMISSION,
-                        "message": "This request has already been processed"
+                logger.warning(f"[{request_id}] Duplicate submission detected (idempotency)")
+                try:
+                    payload = json.loads(existing_response)
+                    return JSONResponse(status_code=409, content=payload)
+                except Exception:
+                    payload = {
+                        "success": True,
+                        "team_id": "UNKNOWN",
+                        "team_name": "UNKNOWN",
+                        "message": "Team registered successfully",
+                        "player_count": 0
                     }
-                )
-        
-        # ====================================================================
-        # STEP 2: LOG REGISTRATION START
-        # ====================================================================
+                    return JSONResponse(status_code=409, content=payload)
+
         StructuredLogger.log_registration_started(request_id, team_name, client_ip)
-        
+
         # ====================================================================
-        # STEP 3: VALIDATE ALL INPUTS
+        # STEP 2: VALIDATE TEAM/CAPTAIN/VICE-CAPTAIN INPUTS
         # ====================================================================
         logger.info(f"[{request_id}] Step 1: Validating inputs...")
-        
         try:
-            # Validate team
             validated_team_name = validate_team_name(team_name)
             validated_church_name = validate_name(church_name, "Church name")
-            
-            # Validate captain
+
             validated_captain_name = validate_name(captain_name, "Captain name")
             validated_captain_phone = validate_phone(captain_phone, "Captain phone")
             validated_captain_email = validate_email(captain_email, "Captain email")
             validated_captain_whatsapp = validate_phone(captain_whatsapp, "Captain WhatsApp")
-            
-            # Validate vice-captain
+
             validated_vice_name = validate_name(vice_name, "Vice-captain name")
             validated_vice_phone = validate_phone(vice_phone, "Vice-captain phone")
             validated_vice_email = validate_email(vice_email, "Vice-captain email")
             validated_vice_whatsapp = validate_phone(vice_whatsapp, "Vice-captain WhatsApp")
-            
+
             logger.info(f"[{request_id}] ✅ Input validation passed")
-            
         except ValidationError as e:
             StructuredLogger.log_validation_error(request_id, e.field, e.message)
             return create_validation_error(e.field, e.message)
-        
+
         # ====================================================================
-        # STEP 4: VALIDATE FILES
+        # STEP 3: VALIDATE TEAM FILES
         # ====================================================================
-        logger.info(f"[{request_id}] Step 2: Validating files...")
-        
+        logger.info(f"[{request_id}] Step 2: Validating team files...")
         try:
-            # Required file
             pastor_filename, pastor_mime = await validate_file(pastor_letter, "Pastor letter")
             
-            # Optional files
-            receipt_filename, receipt_mime = None, None
+            receipt_filename, receipt_mime = (None, None)
             if payment_receipt:
                 receipt_filename, receipt_mime = await validate_file(payment_receipt, "Payment receipt")
             
-            photo_filename, photo_mime = None, None
+            photo_filename, photo_mime = (None, None)
             if group_photo:
                 photo_filename, photo_mime = await validate_file(group_photo, "Group photo")
             
-            logger.info(f"[{request_id}] ✅ File validation passed")
-            
+            logger.info(f"[{request_id}] ✅ Team file validation passed")
         except ValidationError as e:
             StructuredLogger.log_validation_error(request_id, e.field, e.message)
-            
             if e.error_code == "FILE_TOO_LARGE":
-                return create_error_response(
-                    ErrorCode.FILE_TOO_LARGE,
-                    e.message,
-                    {"field": e.field},
-                    400
-                )
-            elif e.error_code == "INVALID_MIME_TYPE":
-                return create_error_response(
-                    ErrorCode.INVALID_MIME_TYPE,
-                    e.message,
-                    {"field": e.field},
-                    400
-                )
-            else:
-                return create_validation_error(e.field, e.message)
-        
+                return create_error_response(ErrorCode.FILE_TOO_LARGE, e.message, {"field": e.field}, 400)
+            if e.error_code == "INVALID_MIME_TYPE":
+                return create_error_response(ErrorCode.INVALID_MIME_TYPE, e.message, {"field": e.field}, 400)
+            return create_validation_error(e.field, e.message)
+
         # ====================================================================
-        # STEP 5: VALIDATE PLAYERS JSON
+        # STEP 4: EXTRACT PLAYERS FROM FORM (DYNAMIC player_i_* fields)
         # ====================================================================
-        logger.info(f"[{request_id}] Step 3: Parsing players data...")
+        logger.info(f"[{request_id}] Step 3: Extracting players from form...")
+        form = await request.form()
         
-        validated_players = []
-        if players_json:
+        # Helper to safely get form values
+        def get_form_value(key: str) -> Optional[str]:
+            val = form.get(key)
+            if isinstance(val, str):
+                return val.strip() if val else None
+            return None
+        
+        def get_form_file(key: str) -> Optional[UploadFile]:
+            val = form.get(key)
+            if isinstance(val, UploadFile):
+                return val
+            return None
+        
+        # Dynamically detect all players by checking player_i_name fields
+        players_data = []
+        player_index = 0
+        
+        while True:
+            name_key = f"player_{player_index}_name"
+            role_key = f"player_{player_index}_role"
+            aadhar_key = f"player_{player_index}_aadhar_file"
+            subscription_key = f"player_{player_index}_subscription_file"
+            
+            player_name = get_form_value(name_key)
+            
+            # If no name found, we've reached the end of players
+            if not player_name:
+                break
+            
+            player_role = get_form_value(role_key)
+            aadhar_file = get_form_file(aadhar_key)
+            subscription_file = get_form_file(subscription_key)
+            
+            # Validate player data
             try:
-                players_raw = json.loads(players_json)
-                for idx, player in enumerate(players_raw, 1):
-                    validated_player = validate_player_data(player, idx)
-                    validated_players.append(validated_player)
-                
-                logger.info(f"[{request_id}] ✅ Parsed {len(validated_players)} players")
-                
-            except json.JSONDecodeError as e:
-                return create_validation_error("players_json", f"Invalid JSON: {str(e)}")
+                if not player_name or len(player_name) < 2:
+                    raise ValidationError(name_key, f"Player {player_index + 1} name is required (min 2 characters)")
+                if not player_role or player_role not in ["Batsman", "Bowler", "All-Rounder", "Wicket-Keeper"]:
+                    raise ValidationError(role_key, f"Player {player_index + 1} role must be one of: Batsman, Bowler, All-Rounder, Wicket-Keeper")
             except ValidationError as e:
                 StructuredLogger.log_validation_error(request_id, e.field, e.message)
                 return create_validation_error(e.field, e.message)
+            
+            players_data.append({
+                "index": player_index,
+                "name": player_name,
+                "role": player_role,
+                "aadhar_file": aadhar_file,
+                "subscription_file": subscription_file
+            })
+            
+            player_index += 1
         
+        logger.info(f"[{request_id}] ✅ Found {len(players_data)} players in form")
+
         # ====================================================================
-        # STEP 6: GENERATE RACE-SAFE TEAM ID
+        # STEP 5: GENERATE TEAM ID
         # ====================================================================
         logger.info(f"[{request_id}] Step 4: Generating sequential team ID...")
-        
         try:
             team_id = await generate_next_team_id(db)
             logger.info(f"[{request_id}] ✅ Team ID: {team_id}")
-            
         except Exception as e:
             logger.error(f"[{request_id}] ❌ Team ID generation failed: {e}")
             return create_error_response(
@@ -271,21 +234,18 @@ async def register_team_production_hardened(
                 {"error": str(e)},
                 500
             )
-        
+
         # ====================================================================
-        # STEP 7: UPLOAD FILES TO CLOUDINARY (WITH RETRY)
+        # STEP 6: UPLOAD TEAM FILES TO CLOUDINARY
         # ====================================================================
-        logger.info(f"[{request_id}] Step 5: Uploading files to Cloudinary...")
-        
+        logger.info(f"[{request_id}] Step 5: Uploading team files to Cloudinary...")
         try:
-            # Upload pastor letter (required)
             pastor_url = await upload_with_retry(
                 pastor_letter,
                 folder=f"ICCT26/pastor_letters/{team_id}"
             )
             StructuredLogger.log_file_upload(request_id, "pastor_letter", "success", pastor_url)
-            
-            # Upload payment receipt (optional)
+
             receipt_url = None
             if payment_receipt:
                 try:
@@ -294,12 +254,10 @@ async def register_team_production_hardened(
                         folder=f"ICCT26/receipts/{team_id}"
                     )
                     StructuredLogger.log_file_upload(request_id, "payment_receipt", "success", receipt_url)
-                except CloudinaryUploadError as e:
-                    # Log but don't fail registration
+                except CloudinaryUploadError:
                     StructuredLogger.log_file_upload(request_id, "payment_receipt", "failed")
                     logger.warning(f"[{request_id}] Optional file upload failed: payment_receipt")
-            
-            # Upload group photo (optional)
+
             photo_url = None
             if group_photo:
                 try:
@@ -308,24 +266,21 @@ async def register_team_production_hardened(
                         folder=f"ICCT26/group_photos/{team_id}"
                     )
                     StructuredLogger.log_file_upload(request_id, "group_photo", "success", photo_url)
-                except CloudinaryUploadError as e:
-                    # Log but don't fail registration
+                except CloudinaryUploadError:
                     StructuredLogger.log_file_upload(request_id, "group_photo", "failed")
                     logger.warning(f"[{request_id}] Optional file upload failed: group_photo")
-            
-            logger.info(f"[{request_id}] ✅ File uploads complete")
-            
+
+            logger.info(f"[{request_id}] ✅ Team file uploads complete")
         except CloudinaryUploadError as e:
             logger.error(f"[{request_id}] ❌ Required file upload failed: {e.message}")
             return create_upload_error("pastor_letter", e.retry_count)
-        
+
         # ====================================================================
-        # STEP 8: CREATE DATABASE RECORDS (ATOMIC TRANSACTION)
+        # STEP 7: CREATE DATABASE RECORDS (ATOMIC TRANSACTION)
         # ====================================================================
         logger.info(f"[{request_id}] Step 6: Creating database records...")
-        
         try:
-            # Create team record
+            # Create Team record
             team = Team(
                 team_id=team_id,
                 team_name=validated_team_name,
@@ -344,78 +299,97 @@ async def register_team_production_hardened(
                 registration_date=datetime.utcnow(),
                 created_at=datetime.utcnow()
             )
-            
             db.add(team)
-            await db.flush()
-            
-            # Create player records
+            await db.flush()  # Persist team first for FK references
+
+            # Create Player records with file uploads
             player_count = 0
-            for idx, player_data in enumerate(validated_players, 1):
-                player_id = f"{team_id}-P{idx:02d}"
+            for player_data in players_data:
+                player_num = player_data["index"] + 1
+                player_id = f"{team_id}-P{player_num:02d}"
+                
+                # Upload player files to Cloudinary
+                aadhar_url = None
+                subscription_url = None
+                
+                if player_data["aadhar_file"]:
+                    try:
+                        aadhar_url = await upload_with_retry(
+                            player_data["aadhar_file"],
+                            folder=f"ICCT26/players/{team_id}/player_{player_data['index']}/aadhar"
+                        )
+                        StructuredLogger.log_file_upload(
+                            request_id,
+                            f"player_{player_data['index']}_aadhar",
+                            "success",
+                            aadhar_url
+                        )
+                    except CloudinaryUploadError as e:
+                        logger.warning(f"[{request_id}] Player {player_num} aadhar upload failed: {e.message}")
+                        StructuredLogger.log_file_upload(request_id, f"player_{player_data['index']}_aadhar", "failed")
+                
+                if player_data["subscription_file"]:
+                    try:
+                        subscription_url = await upload_with_retry(
+                            player_data["subscription_file"],
+                            folder=f"ICCT26/players/{team_id}/player_{player_data['index']}/subscription"
+                        )
+                        StructuredLogger.log_file_upload(
+                            request_id,
+                            f"player_{player_data['index']}_subscription",
+                            "success",
+                            subscription_url
+                        )
+                    except CloudinaryUploadError as e:
+                        logger.warning(f"[{request_id}] Player {player_num} subscription upload failed: {e.message}")
+                        StructuredLogger.log_file_upload(request_id, f"player_{player_data['index']}_subscription", "failed")
+                
+                # Create Player database record
                 player = Player(
                     player_id=player_id,
                     team_id=team_id,
                     name=player_data["name"],
                     role=player_data["role"],
-                    aadhar_file=None,
-                    subscription_file=None,
+                    aadhar_file=aadhar_url,
+                    subscription_file=subscription_url,
                     created_at=datetime.utcnow()
                 )
                 db.add(player)
                 player_count += 1
-            
-            # Commit transaction
+
+            # Commit transaction (team + all players)
             await db.commit()
-            
             StructuredLogger.log_db_operation(request_id, "insert", "success", team_id)
             logger.info(f"[{request_id}] ✅ Database records created (team + {player_count} players)")
-            
+
         except IntegrityError as e:
             await db.rollback()
             logger.error(f"[{request_id}] ❌ Duplicate team detected: {e}")
             
-            # Check if it's the unique constraint violation
+            # Check if duplicate via idempotency
+            if idempotency_key:
+                existing_response = await check_idempotency_key(db, idempotency_key)
+                if existing_response:
+                    try:
+                        payload = json.loads(existing_response)
+                        return JSONResponse(status_code=409, content=payload)
+                    except Exception:
+                        pass
+            
+            # Check for unique constraint violation
             if "uq_team_name_captain_phone" in str(e):
                 return create_duplicate_error("team_name/captain_phone", validated_team_name)
             
             return create_database_error("insert", str(e))
-            
+
         except Exception as e:
             await db.rollback()
             logger.error(f"[{request_id}] ❌ Database error: {e}")
             StructuredLogger.log_db_operation(request_id, "insert", "failed", team_id)
             return create_database_error("insert", str(e))
-        
+
         # ====================================================================
-        # STEP 9: SEND EMAIL CONFIRMATION (NON-BLOCKING)
-        # ====================================================================
-        logger.info(f"[{request_id}] Step 7: Sending email confirmation...")
-        
-        email_sent = False
-        try:
-            email_body = create_registration_email(
-                validated_team_name,
-                team_id,
-                validated_captain_name,
-                validated_church_name,
-                player_count
-            )
-            
-            email_sent = await send_email_with_retry(
-                validated_captain_email,
-                f"ICCT26 Registration Confirmation — {team_id}",
-                email_body
-            )
-            
-            status = "success" if email_sent else "failed"
-            StructuredLogger.log_email_sent(request_id, validated_captain_email, status)
-            
-        except Exception as e:
-            logger.warning(f"[{request_id}] ⚠️ Email send failed (non-fatal): {e}")
-            StructuredLogger.log_email_sent(request_id, validated_captain_email, "failed")
-        
-        # ====================================================================
-        # STEP 10: STORE IDEMPOTENCY KEY
+        # STEP 8: STORE IDEMPOTENCY KEY
         # ====================================================================
         if idempotency_key:
             try:
@@ -424,16 +398,14 @@ async def register_team_production_hardened(
                     "team_id": team_id,
                     "team_name": validated_team_name,
                     "message": "Team registered successfully",
-                    "email_sent": email_sent,
                     "player_count": player_count
                 })
-                
                 await store_idempotency_key(db, idempotency_key, response_data)
             except Exception as e:
                 logger.warning(f"[{request_id}] Failed to store idempotency key: {e}")
-        
+
         # ====================================================================
-        # STEP 11: RETURN SUCCESS RESPONSE
+        # STEP 9: RETURN SUCCESS RESPONSE
         # ====================================================================
         logger.info(f"[{request_id}] ✅ Registration complete: {team_id}")
         
@@ -444,13 +416,11 @@ async def register_team_production_hardened(
                 "team_id": team_id,
                 "team_name": validated_team_name,
                 "message": "Team registered successfully",
-                "email_sent": email_sent,
                 "player_count": player_count
             }
         )
-        
+
     except Exception as e:
-        # Catch-all for unexpected errors
         logger.exception(f"[{request_id}] ❌ Unexpected error: {e}")
         StructuredLogger.log_exception(request_id, e)
         return create_internal_error(
