@@ -109,10 +109,27 @@ class TeamAsyncDB(AsyncBase):
     __tablename__ = "teams"
     id = Column(Integer, primary_key=True, index=True)
     team_id = Column(String(50), unique=True, index=True)
-    church_name = Column(String(200))
     team_name = Column(String(100))
+    church_name = Column(String(200))
+    
+    # Captain information
+    captain_name = Column(String(100))
+    captain_phone = Column(String(15))
+    captain_email = Column(String(255))
+    captain_whatsapp = Column(String(20), nullable=True)
+    
+    # Vice-Captain information
+    vice_captain_name = Column(String(100))
+    vice_captain_phone = Column(String(15))
+    vice_captain_email = Column(String(255))
+    vice_captain_whatsapp = Column(String(20), nullable=True)
+    
+    # File uploads
     pastor_letter = Column(Text, nullable=True)
     payment_receipt = Column(Text, nullable=True)
+    group_photo = Column(Text, nullable=True)  # 🔥 CRITICAL: Added missing column!
+    
+    # Timestamps
     registration_date = Column(DateTime)
     created_at = Column(DateTime)
 
@@ -291,6 +308,7 @@ async def startup_event():
                             vice_captain_whatsapp VARCHAR(20),
                             payment_receipt TEXT,
                             pastor_letter TEXT,
+                            group_photo TEXT,
                             registration_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                         )
