@@ -157,13 +157,13 @@ class ViceCaptainAsyncDB(AsyncBase):
 class PlayerAsyncDB(AsyncBase):
     __tablename__ = "players"
     id = Column(Integer, primary_key=True, index=True)
+    player_id = Column(String(50), unique=True, nullable=False, index=True)  # 🔥 CRITICAL: Added missing column!
     team_id = Column(String(50), ForeignKey("teams.team_id"))
     name = Column(String(100))
-    age = Column(Integer)
-    phone = Column(String(20))
     role = Column(String(50))
     aadhar_file = Column(Text, nullable=True)
     subscription_file = Column(Text, nullable=True)
+    created_at = Column(DateTime)  # 🔥 CRITICAL: Added missing column!
 
 # -----------------------
 # Helpers to import sync engine (defensive)
@@ -316,11 +316,9 @@ async def startup_event():
                     conn.execute(text("""
                         CREATE TABLE IF NOT EXISTS players (
                             id SERIAL PRIMARY KEY,
-                            team_id VARCHAR(50) REFERENCES teams(team_id),
-                            player_id VARCHAR(50),
+                            player_id VARCHAR(50) UNIQUE NOT NULL,
+                            team_id VARCHAR(50) REFERENCES teams(team_id) ON DELETE CASCADE,
                             name VARCHAR(100) NOT NULL,
-                            age INTEGER NOT NULL,
-                            phone VARCHAR(20) NOT NULL,
                             role VARCHAR(50) NOT NULL,
                             aadhar_file TEXT,
                             subscription_file TEXT,
