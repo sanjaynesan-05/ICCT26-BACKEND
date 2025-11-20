@@ -319,7 +319,7 @@ async def register_team_production_hardened(
                     try:
                         aadhar_url = await upload_with_retry(
                             p["aadhar_file"],
-                            folder=f"ICCT26/players/{team_id}/player_{p['index']}/aadhar"
+                            folder=f"players/{team_id}/{player_id}"
                         )
                         StructuredLogger.log_file_upload(request_id, f"player_{p['index']}_aadhar", "success", aadhar_url)
                     except CloudinaryUploadError as e:
@@ -330,7 +330,7 @@ async def register_team_production_hardened(
                     try:
                         subs_url = await upload_with_retry(
                             p["subscription_file"],
-                            folder=f"ICCT26/players/{team_id}/player_{p['index']}/subscription"
+                            folder=f"players/{team_id}/{player_id}"
                         )
                         StructuredLogger.log_file_upload(request_id, f"player_{p['index']}_subscription", "success", subs_url)
                     except CloudinaryUploadError as e:
