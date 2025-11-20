@@ -306,6 +306,11 @@ async def register_team_production_hardened(
                 player_num = p["index"] + 1
                 player_id = f"{team_id}-P{player_num:02d}"
 
+                # 🔍 DEBUG: Log file status before upload
+                logger.info(f"[{request_id}] 📤 Player {player_num} ({player_id}):")
+                logger.info(f"[{request_id}]   - aadhar_file present: {bool(p['aadhar_file'])}")
+                logger.info(f"[{request_id}]   - subscription_file present: {bool(p['subscription_file'])}")
+
                 # upload player files (if any)
                 aadhar_url = None
                 subs_url = None
@@ -341,6 +346,12 @@ async def register_team_production_hardened(
                     subscription_file=subs_url,
                     created_at=datetime.utcnow()
                 )
+                
+                # 🔍 DEBUG: Log what's being saved to database
+                logger.info(f"[{request_id}] 💾 Database record for {player_id}:")
+                logger.info(f"[{request_id}]   - aadhar_file: {aadhar_url[:50] + '...' if aadhar_url else 'NULL'}")
+                logger.info(f"[{request_id}]   - subscription_file: {subs_url[:50] + '...' if subs_url else 'NULL'}")
+                
                 db.add(player)
                 player_count += 1
 
