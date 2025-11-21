@@ -239,29 +239,20 @@ async def get_team_details(
 
 @router.get("/teams")
 async def list_all_teams(
-    skip: int = 0,
-    limit: int = 10,
     session: AsyncSession = Depends(get_db_async)
 ):
-    logger.info(f"GET /api/teams skip={skip} limit={limit}")
+    logger.info(f"GET /api/teams")
     try:
-        if limit > 100:
-            limit = 100
+        # Returns ALL teams without any pagination
 
-        count_q = select(func.count(Team.id))
-        count_result = await session.execute(count_q)
-        total_count = count_result.scalar_one()
-
-        q = select(Team).offset(skip).limit(limit)
+        q = select(Team).order_by(Team.id)
         r = await session.execute(q)
         teams = r.scalars().all()
 
         return {
             "success": True,
-            "total_teams": total_count,
+            "total_teams": len(teams),
             "returned": len(teams),
-            "skip": skip,
-            "limit": limit,
             "teams": [
                 {
                     "team_id": t.team_id,
