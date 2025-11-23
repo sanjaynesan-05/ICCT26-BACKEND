@@ -177,20 +177,33 @@ async def get_collection_images(
     try:
         logger.info(f"Fetching images from Cloudinary Collection {CLOUDINARY_COLLECTION_ID} (limit: {limit})")
         
-        # Use Cloudinary Collections API to fetch images
-        # Collections API endpoint
-        url = f"https://api.cloudinary.com/v2/{settings.CLOUDINARY_CLOUD_NAME}/resources"
+        # Define the 14 images we want to display
+        GALLERY_IMAGES = {
+            "DSC06221_ya9juq",
+            "DSC07328_fhaxdo",
+            "DSC07331_c5ix5w",
+            "DSC07330_hlcyys",
+            "DSC07329_vfby54",
+            "DSC07310_pwjasf",
+            "DSC06298_gm36jp",
+            "DSC05672_jql1e1",
+            "DSC07325_ri3fuv",
+            "DSC07312_a5dm0s",
+            "DSC06289_pn65vg",
+            "DSC06226_w4nfdb",
+            "DSC06220_fix24c",
+            "DSC05673_nrhrg7"
+        }
         
-        # Fetch resources in the collection
+        # Fetch all resources from Cloudinary account
         result = cloudinary.api.resources(
             type="upload",
-            tags=CLOUDINARY_COLLECTION_ID,
-            max_results=limit,
+            max_results=500,  # Get up to 500 resources
             resource_type="image"
         )
         
         if not result or 'resources' not in result:
-            logger.warning(f"No images found in collection {CLOUDINARY_COLLECTION_ID}")
+            logger.warning(f"No images found in Cloudinary account")
             return GalleryResponse(
                 success=True,
                 message="No images found in collection",
@@ -198,24 +211,27 @@ async def get_collection_images(
                 images=[]
             )
         
-        # Parse and format response
+        # Parse and format response - only include the 14 gallery images
         images = []
         for resource in result['resources']:
-            # Extract filename from public_id
-            filename = resource['public_id'].split('/')[-1]
+            # Extract filename without extension from public_id
+            public_id = resource['public_id']
+            filename_base = public_id.split('/')[-1]  # Get last part after /
             
-            image = GalleryImage(
-                public_id=resource['public_id'],
-                url=resource['url'],
-                secure_url=resource['secure_url'],
-                filename=f"{filename}.{resource['format']}",
-                width=resource.get('width', 0),
-                height=resource.get('height', 0),
-                bytes=resource.get('bytes', 0),
-                uploaded_at=resource.get('created_at', ''),
-                format=resource.get('format', 'jpg')
-            )
-            images.append(image)
+            # Check if this is one of our 14 gallery images
+            if filename_base in GALLERY_IMAGES:
+                image = GalleryImage(
+                    public_id=public_id,
+                    url=resource['url'],
+                    secure_url=resource['secure_url'],
+                    filename=f"{filename_base}.{resource['format']}",
+                    width=resource.get('width', 0),
+                    height=resource.get('height', 0),
+                    bytes=resource.get('bytes', 0),
+                    uploaded_at=resource.get('created_at', ''),
+                    format=resource.get('format', 'jpg')
+                )
+                images.append(image)
         
         # Sort by upload date (newest first)
         images.sort(key=lambda x: x.uploaded_at, reverse=True)
