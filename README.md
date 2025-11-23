@@ -518,6 +518,31 @@ Fetch all images from the ICCT26/Gallery folder in Cloudinary.
 }
 ```
 
+#### Get Gallery Images from Cloudinary Collection
+
+```http
+GET /api/gallery/collection/images
+```
+
+Fetch all images from Cloudinary Collection. Collection provides easier management through Cloudinary's web UI.
+
+**Collection:** https://collection.cloudinary.com/dplaeuuqk/b40aac6242ba4cd0c8bedcb520ca1eac
+
+**Query Parameters:**
+
+- `limit` - Number of images to fetch (default: 50)
+- `skip` - Number of images to skip for pagination (default: 0)
+
+**Response:**
+
+Same as folder-based endpoint above.
+
+**Advantages:**
+- Easy drag-and-drop upload via Cloudinary UI
+- Better organization without folder structure
+- Collaborative asset management
+- Built-in metadata and tagging
+
 #### Download Single Image
 
 ```http

@@ -1,7 +1,8 @@
 """
 Gallery Routes
 ==============
-API endpoints for fetching and downloading images from Cloudinary gallery folder.
+API endpoints for fetching and downloading images from Cloudinary gallery folder or collection.
+Supports both folder-based gallery and Cloudinary Collections.
 """
 
 import logging
@@ -23,6 +24,11 @@ cloudinary.config(
 )
 
 router = APIRouter(prefix="/api/gallery", tags=["Gallery"])
+
+# Cloudinary Collection Configuration
+# Collection ID from: https://collection.cloudinary.com/dplaeuuqk/b40aac6242ba4cd0c8bedcb520ca1eac
+CLOUDINARY_COLLECTION_ID = "b40aac6242ba4cd0c8bedcb520ca1eac"
+CLOUDINARY_ACCOUNT_ID = "dplaeuuqk"
 
 
 # ============================================================
@@ -151,6 +157,89 @@ async def get_gallery_images(
         raise HTTPException(
             status_code=500,
             detail=f"Error fetching gallery: {str(e)}"
+        )
+
+
+@router.get("/collection/images", response_model=GalleryResponse)
+async def get_collection_images(
+    limit: int = Query(100, ge=1, le=500, description="Maximum number of images to fetch")
+):
+    """
+    Fetch all images from Cloudinary Collection.
+    
+    Collection: https://collection.cloudinary.com/dplaeuuqk/b40aac6242ba4cd0c8bedcb520ca1eac
+    
+    Returns:
+    - List of images with metadata
+    - Image count
+    - Direct download URLs for each image
+    """
+    try:
+        logger.info(f"Fetching images from Cloudinary Collection {CLOUDINARY_COLLECTION_ID} (limit: {limit})")
+        
+        # Use Cloudinary Collections API to fetch images
+        # Collections API endpoint
+        url = f"https://api.cloudinary.com/v2/{settings.CLOUDINARY_CLOUD_NAME}/resources"
+        
+        # Fetch resources in the collection
+        result = cloudinary.api.resources(
+            type="upload",
+            tags=CLOUDINARY_COLLECTION_ID,
+            max_results=limit,
+            resource_type="image"
+        )
+        
+        if not result or 'resources' not in result:
+            logger.warning(f"No images found in collection {CLOUDINARY_COLLECTION_ID}")
+            return GalleryResponse(
+                success=True,
+                message="No images found in collection",
+                count=0,
+                images=[]
+            )
+        
+        # Parse and format response
+        images = []
+        for resource in result['resources']:
+            # Extract filename from public_id
+            filename = resource['public_id'].split('/')[-1]
+            
+            image = GalleryImage(
+                public_id=resource['public_id'],
+                url=resource['url'],
+                secure_url=resource['secure_url'],
+                filename=f"{filename}.{resource['format']}",
+                width=resource.get('width', 0),
+                height=resource.get('height', 0),
+                bytes=resource.get('bytes', 0),
+                uploaded_at=resource.get('created_at', ''),
+                format=resource.get('format', 'jpg')
+            )
+            images.append(image)
+        
+        # Sort by upload date (newest first)
+        images.sort(key=lambda x: x.uploaded_at, reverse=True)
+        
+        logger.info(f"✅ Successfully fetched {len(images)} images from collection")
+        
+        return GalleryResponse(
+            success=True,
+            message=f"Successfully fetched {len(images)} images from collection",
+            count=len(images),
+            images=images
+        )
+        
+    except cloudinary.exceptions.Error as e:
+        logger.error(f"❌ Cloudinary Collection API error: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch collection images: {str(e)}"
+        )
+    except Exception as e:
+        logger.exception(f"❌ Unexpected error fetching collection images: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error fetching collection: {str(e)}"
         )
 
 
