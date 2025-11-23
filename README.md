@@ -17,6 +17,7 @@ The ICCT26 Backend API provides a complete registration and management system fo
 - **Team Registration** - Multi-step form handling with validation
 - **Player Management** - Dynamic player extraction with role validation  
 - **File Storage** - Cloudinary integration for pastor letters, receipts, photos, and player documents
+- **Tournament Gallery** - Image gallery with download functionality
 - **Production Hardening** - Race-safe ID generation, retry logic, structured logging
 - **Database Management** - PostgreSQL with async SQLAlchemy ORM
 
@@ -40,6 +41,9 @@ FastAPI 0.104+ (Async Python Web Framework)
 - [Production Features](#-production-features)
 - [Architecture](#-architecture)
 - [API Endpoints](#-api-endpoints)
+  - [Team Registration](#registration-endpoint)
+  - [Gallery Management](#gallery-endpoints)
+  - [Admin Operations](#admin-endpoints)
 - [Installation & Setup](#-installation--setup)
 - [Configuration](#-configuration)
 - [Database Schema](#-database-schema)
@@ -225,6 +229,20 @@ Consistent error structure across all endpoints:
 
 **Code:** `app/utils/error_responses.py`
 
+### 8. Tournament Gallery Management
+
+Professional image gallery with Cloudinary integration:
+
+- **Browse Images** - Fetch gallery images from ICCT26/Gallery folder
+- **Single Download** - Download individual images with proper filenames
+- **Bulk Download** - Generate URLs for multiple images at once
+- **Pagination** - Support for limit/skip parameters
+- **CDN Delivery** - Fast image delivery via Cloudinary CDN
+- **Responsive Design** - Mobile-friendly gallery interface
+- **Health Check** - Verify Cloudinary API connection
+
+**Code:** `app/routes/gallery.py`
+
 ---
 
 ## 🏗️ Architecture
@@ -300,6 +318,7 @@ ICCT26-BACKEND/
 ├── app/
 │   ├── routes/
 │   │   ├── registration_production.py  # Main registration endpoint
+│   │   ├── gallery.py                  # Gallery management endpoints
 │   │   ├── team.py                     # Team management routes
 │   │   ├── admin.py                    # Admin endpoints
 │   │   └── health.py                   # Health check
@@ -458,6 +477,130 @@ GET /health
 GET /admin/teams              # Get all teams
 GET /admin/teams/{team_id}    # Get specific team with players
 GET /admin/players            # Get all players
+```
+
+### Gallery Endpoints
+
+**Purpose:** Manage tournament gallery images with Cloudinary integration
+
+#### Get Gallery Images
+
+```http
+GET /api/gallery/ICCT26/Gallery/images
+```
+
+Fetch all images from the ICCT26/Gallery folder in Cloudinary.
+
+**Query Parameters:**
+
+- `limit` - Number of images to fetch (default: 50)
+- `skip` - Number of images to skip for pagination (default: 0)
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "images": [
+    {
+      "public_id": "ICCT26/Gallery/image_001",
+      "url": "https://res.cloudinary.com/...",
+      "secure_url": "https://res.cloudinary.com/...",
+      "format": "jpg",
+      "created_at": "2025-11-20T10:30:45Z",
+      "width": 1920,
+      "height": 1080
+    }
+  ],
+  "total_count": 150,
+  "limit": 50,
+  "skip": 0
+}
+```
+
+#### Download Single Image
+
+```http
+POST /api/gallery/download/single
+Content-Type: application/json
+```
+
+Generate download URL for a single image.
+
+**Request Body:**
+
+```json
+{
+  "public_id": "ICCT26/Gallery/image_001"
+}
+```
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "public_id": "ICCT26/Gallery/image_001",
+  "download_url": "https://res.cloudinary.com/...?fl_attachment",
+  "filename": "image_001.jpg"
+}
+```
+
+#### Download Bulk Images
+
+```http
+POST /api/gallery/download/bulk
+Content-Type: application/json
+```
+
+Prepare zip file with multiple images for download.
+
+**Request Body:**
+
+```json
+{
+  "public_ids": [
+    "ICCT26/Gallery/image_001",
+    "ICCT26/Gallery/image_002",
+    "ICCT26/Gallery/image_003"
+  ]
+}
+```
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "count": 3,
+  "download_urls": [
+    {
+      "public_id": "ICCT26/Gallery/image_001",
+      "url": "https://res.cloudinary.com/...?fl_attachment",
+      "filename": "image_001.jpg"
+    }
+  ],
+  "message": "Download URLs generated for 3 images"
+}
+```
+
+#### Gallery Health Check
+
+```http
+GET /api/gallery/health
+```
+
+Verify Cloudinary connection and API status.
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "status": "healthy",
+  "cloudinary_api": "connected",
+  "timestamp": "2025-11-20T10:30:45Z"
+}
 ```
 
 ---
