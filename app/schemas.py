@@ -23,9 +23,9 @@ class PlayerDetails(BaseModel):
         max_length=settings.PLAYER_NAME_MAX_LENGTH
     )
     
-    role: str = Field(
-        ...,
-        description=f"Player role - one of {settings.VALID_PLAYER_ROLES}"
+    role: Optional[str] = Field(
+        None,
+        description=f"Player role - optional, one of {settings.VALID_PLAYER_ROLES}"
     )
     
     aadharFile: Optional[str] = Field(
@@ -40,8 +40,8 @@ class PlayerDetails(BaseModel):
 
     @validator('role')
     def validate_role(cls, v):
-        """Validate player role"""
-        if v not in settings.VALID_PLAYER_ROLES:
+        """Validate player role if provided"""
+        if v and v not in settings.VALID_PLAYER_ROLES:
             raise ValueError(
                 f'Role must be one of {settings.VALID_PLAYER_ROLES}'
             )
@@ -66,7 +66,7 @@ class PlayerCreate(BaseModel):
     player_id: str = Field(..., description="Unique player ID (e.g., ICCT26-...-P01)")
     team_id: str = Field(..., description="Team ID reference")
     name: str = Field(..., min_length=1, max_length=150, description="Player full name")
-    role: str = Field(..., min_length=1, max_length=20, description="Player role (max 20 chars)")
+    role: Optional[str] = Field(None, max_length=20, description="Player role (optional, max 20 chars)")
     aadhar_file: Optional[str] = Field(None, description="Aadhar file (base64 encoded)")
     subscription_file: Optional[str] = Field(None, description="Subscription file (base64 encoded)")
 

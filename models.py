@@ -79,7 +79,7 @@ class Player(Base):
 
     # Player information
     name = Column(String(100), nullable=False)
-    role = Column(String(20), nullable=False)
+    role = Column(String(20), nullable=True)  # Optional player role
 
     # File uploads (Base64 - Text for unlimited size)
     aadhar_file = Column(Text, nullable=True)

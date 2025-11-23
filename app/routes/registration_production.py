@@ -211,8 +211,9 @@ async def register_team_production_hardened(
             try:
                 if len(name_val) < 2:
                     raise ValidationError(name_key, f"Player {idx+1} name too short")
-                if not role_val or role_val not in ["Batsman", "Bowler", "All-Rounder", "Wicket-Keeper"]:
-                    raise ValidationError(role_key, f"Player {idx+1} role must be one of: Batsman, Bowler, All-Rounder, Wicket-Keeper")
+                # Role is optional - only validate if provided
+                if role_val and role_val not in ["Batsman", "Bowler", "All-Rounder", "Wicket-Keeper", ""]:
+                    raise ValidationError(role_key, f"Player {idx+1} role must be one of: Batsman, Bowler, All-Rounder, Wicket-Keeper (or leave empty)")
                 # Validate files if present
                 if aadhar_file:
                     await validate_file(aadhar_file, f"player_{idx}_aadhar_file")

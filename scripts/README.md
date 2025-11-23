@@ -4,6 +4,32 @@ Utility scripts for managing the ICCT26 backend.
 
 ## Available Scripts
 
+### make_player_role_optional_migration.py
+**NEW** - Make player role field optional in database
+
+**Purpose:** Update database schema to allow players to be registered without a role
+
+**Usage:**
+```bash
+# Run migration
+python scripts/make_player_role_optional_migration.py
+
+# Rollback migration (make role required again)
+python scripts/make_player_role_optional_migration.py rollback
+```
+
+**What it does:**
+1. Checks current state of the `role` column
+2. Alters the `players` table to make `role` column nullable
+3. Adds descriptive comment to the column
+4. Verifies the change was successful
+
+**Rollback:**
+- Sets NULL roles to default value 'Player'
+- Makes role column required again
+
+---
+
 ### migrate_to_neon.py
 Database migration script for Neon PostgreSQL setup.
 

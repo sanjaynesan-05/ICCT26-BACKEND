@@ -52,7 +52,7 @@ class ViceCaptainCreateMultipart(BaseModel):
 class PlayerCreateMultipart(BaseModel):
     """Player information for multipart registration (files handled separately)"""
     name: str = Field(..., min_length=1, max_length=150, description="Player full name")
-    role: str = Field(..., min_length=1, max_length=50, description="Player role (e.g., Batsman, Bowler)")
+    role: Optional[str] = Field(None, max_length=50, description="Player role (optional, e.g., Batsman, Bowler)")
     dob: str = Field(..., description="Date of birth (YYYY-MM-DD)")
     
     @field_validator('dob')
