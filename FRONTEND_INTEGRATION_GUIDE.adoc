@@ -1,0 +1,1061 @@
+= ICCT26 Frontend Integration Guide - Cricket Schedule API
+
+**Date**: November 28, 2025 +
+**Version**: 1.0.0 +
+**Status**: ✅ PRODUCTION READY
+
+---
+
+== Table of Contents
+
+* <<overview,Overview>>
+* <<api-endpoints-summary,API Endpoints Summary>>
+* <<frontend-integration-requirements,Frontend Integration Requirements>>
+* <<implementation-steps,Implementation Steps>>
+* <<code-examples,Code Examples>>
+* <<testing-guide,Testing Guide>>
+* <<deployment-checklist,Deployment Checklist>>
+* <<troubleshooting,Troubleshooting>>
+
+---
+
+== Overview
+
+=== What Was Implemented
+
+Your backend now includes a complete **Cricket Schedule Management System** with:
+
+* ✅ **7 API Endpoints** for full CRUD operations
+* ✅ **Match Scheduling** (create, update, delete matches)
+* ✅ **Live Match Management** (status transitions)
+* ✅ **Result Recording** (winner, margin, cricket-specific validation)
+* ✅ **Cricket Rules Enforcement** (runs 1-999, wickets 1-10)
+* ✅ **Team Validation** (only existing teams allowed)
+* ✅ **Schedule Export** (JSON format for frontend)
+* ✅ **Complete Documentation** (400+ lines of API docs)
+
+=== Frontend Impact
+
+Your frontend needs to be updated to:
+
+. **Admin Panel**: Add match management interface
+. **Public Schedule**: Display matches with results
+. **Live Updates**: Show match status and results
+. **Team Selection**: Use existing teams from database
+. **Result Entry**: Record match outcomes with cricket validation
+
+---
+
+== API Endpoints Summary
+
+[cols="1,2,2,1",options="header"]
+|===
+| Method | Endpoint | Purpose | Status Code
+| GET | /api/schedule/matches | Fetch all matches | 200
+| POST | /api/schedule/matches | Create new match | 201
+| PUT | /api/schedule/matches/\{id} | Update match details | 200
+| DELETE | /api/schedule/matches/\{id} | Delete match | 200
+| PUT | /api/schedule/matches/\{id}/status | Change match status | 200
+| POST | /api/schedule/matches/\{id}/result | Set match result | 200
+| POST | /api/schedule/export | Export schedule as JSON | 200
+|===
+
+=== Response Format
+
+All responses follow this structure:
+
+[source,json]
+----
+{
+  "success": true,
+  "message": "Operation description",
+  "data": { /* match object or array */ }
+}
+----
+
+---
+
+== Frontend Integration Requirements
+
+=== Prerequisites
+
+. **Backend Deployed**: Schedule API must be deployed and accessible
+. **Teams Available**: Teams table must have registered teams
+. **Authentication**: Admin endpoints may require authentication
+. **CORS**: Ensure frontend domain is allowed in backend CORS settings
+
+=== Required Frontend Features
+
+==== Admin Panel Updates
+* Match creation form
+* Match editing interface
+* Match deletion confirmation
+* Status change controls
+* Result entry form
+
+==== Public Schedule Display
+* Match list with status indicators
+* Result display for completed matches
+* Team information display
+* Round/match number organization
+
+==== Real-time Updates (Optional)
+* Live match status updates
+* Result notifications
+* Schedule refresh capabilities
+
+---
+
+== Implementation Steps
+
+=== Step 1: Update API Base URL
+
+Ensure your frontend points to the correct backend URL:
+
+[source,javascript]
+----
+// Update your API configuration
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://your-backend-domain.com';
+
+// Schedule API endpoints
+const SCHEDULE_ENDPOINTS = {
+  MATCHES: `${API_BASE_URL}/api/schedule/matches`,
+  EXPORT: `${API_BASE_URL}/api/schedule/export`
+};
+----
+
+=== Step 2: Create Schedule Service
+
+Create a new service file for schedule operations:
+
+[source,javascript]
+----
+// services/scheduleService.js
+class ScheduleService {
+  constructor() {
+    this.baseUrl = API_BASE_URL;
+  }
+
+  // GET /api/schedule/matches
+  async getAllMatches() {
+    const response = await fetch(`${this.baseUrl}/api/schedule/matches`);
+    const data = await response.json();
+    if (!data.success) throw new Error(data.message);
+    return data.data;
+  }
+
+  // POST /api/schedule/matches
+  async createMatch(matchData) {
+    const response = await fetch(`${this.baseUrl}/api/schedule/matches`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(matchData)
+    });
+    const data = await response.json();
+    if (!data.success) throw new Error(data.message);
+    return data.data;
+  }
+
+  // PUT /api/schedule/matches/{id}
+  async updateMatch(id, matchData) {
+    const response = await fetch(`${this.baseUrl}/api/schedule/matches/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(matchData)
+    });
+    const data = await response.json();
+    if (!data.success) throw new Error(data.message);
+    return data.data;
+  }
+
+  // DELETE /api/schedule/matches/{id}
+  async deleteMatch(id) {
+    const response = await fetch(`${this.baseUrl}/api/schedule/matches/${id}`, {
+      method: 'DELETE'
+    });
+    const data = await response.json();
+    if (!data.success) throw new Error(data.message);
+    return data.data;
+  }
+
+  // PUT /api/schedule/matches/{id}/status
+  async updateMatchStatus(id, status) {
+    const response = await fetch(`${this.baseUrl}/api/schedule/matches/${id}/status`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status })
+    });
+    const data = await response.json();
+    if (!data.success) throw new Error(data.message);
+    return data.data;
+  }
+
+  // POST /api/schedule/matches/{id}/result
+  async setMatchResult(id, resultData) {
+    const response = await fetch(`${this.baseUrl}/api/schedule/matches/${id}/result`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(resultData)
+    });
+    const data = await response.json();
+    if (!data.success) throw new Error(data.message);
+    return data.data;
+  }
+
+  // POST /api/schedule/export
+  async exportSchedule() {
+    const response = await fetch(`${this.baseUrl}/api/schedule/export`, {
+      method: 'POST'
+    });
+    const data = await response.json();
+    if (!data.success) throw new Error(data.message);
+    return data.data;
+  }
+}
+
+export default new ScheduleService();
+----
+
+=== Step 3: Create Match Components
+
+==== Match List Component
+
+[source,javascript]
+----
+// components/MatchList.js
+import React, { useState, useEffect } from 'react';
+import ScheduleService from '../services/scheduleService';
+
+const MatchList = () => {
+  const [matches, setMatches] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    loadMatches();
+  }, []);
+
+  const loadMatches = async () => {
+    try {
+      setLoading(true);
+      const data = await ScheduleService.getAllMatches();
+      setMatches(data);
+      setError(null);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getStatusBadge = (status) => {
+    const badges = {
+      scheduled: 'badge-secondary',
+      live: 'badge-success',
+      completed: 'badge-primary'
+    };
+    return badges[status] || 'badge-secondary';
+  };
+
+  if (loading) return <div className="text-center">Loading matches...</div>;
+  if (error) return <div className="alert alert-danger">{error}</div>;
+
+  return (
+    <div className="match-list">
+      <h2>Cricket Schedule</h2>
+      {matches.length === 0 ? (
+        <p>No matches scheduled yet.</p>
+      ) : (
+        <div className="row">
+          {matches.map(match => (
+            <div key={match.id} className="col-md-6 mb-3">
+              <div className="card">
+                <div className="card-header">
+                  <h5>{match.round} - Match {match.match_number}</h5>
+                  <span className={`badge ${getStatusBadge(match.status)}`}>
+                    {match.status.toUpperCase()}
+                  </span>
+                </div>
+                <div className="card-body">
+                  <div className="d-flex justify-content-between align-items-center mb-2">
+                    <span>{match.team1}</span>
+                    <span className="text-muted">vs</span>
+                    <span>{match.team2}</span>
+                  </div>
+
+                  {match.status === 'completed' && match.result && (
+                    <div className="alert alert-info">
+                      <strong>Result:</strong> {match.result.winner} won by{' '}
+                      {match.result.margin} {match.result.margin_type}
+                      {match.result.won_by_batting_first && ' (batting first)'}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default MatchList;
+----
+
+==== Match Form Component (Admin)
+
+[source,javascript]
+----
+// components/MatchForm.js
+import React, { useState, useEffect } from 'react';
+import ScheduleService from '../services/scheduleService';
+
+const MatchForm = ({ onMatchCreated, onClose }) => {
+  const [formData, setFormData] = useState({
+    round: '',
+    round_number: '',
+    match_number: '',
+    team1: '',
+    team2: ''
+  });
+  const [teams, setTeams] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    loadTeams();
+  }, []);
+
+  const loadTeams = async () => {
+    try {
+      // Assuming you have a teams service
+      const teamsData = await fetch('/api/teams').then(r => r.json());
+      setTeams(teamsData.teams || []);
+    } catch (err) {
+      setError('Failed to load teams');
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+
+    try {
+      const matchData = {
+        ...formData,
+        round_number: parseInt(formData.round_number),
+        match_number: parseInt(formData.match_number)
+      };
+
+      const newMatch = await ScheduleService.createMatch(matchData);
+      onMatchCreated(newMatch);
+      onClose();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleChange = (e) => {
+    setFormData({
+      ...formData,
+      [e.target.name]: e.target.value
+    });
+  };
+
+  return (
+    <div className="modal show d-block" tabIndex="-1">
+      <div className="modal-dialog">
+        <div className="modal-content">
+          <div className="modal-header">
+            <h5 className="modal-title">Create New Match</h5>
+            <button type="button" className="btn-close" onClick={onClose}></button>
+          </div>
+          <form onSubmit={handleSubmit}>
+            <div className="modal-body">
+              {error && <div className="alert alert-danger">{error}</div>}
+
+              <div className="mb-3">
+                <label className="form-label">Round Name</label>
+                <input
+                  type="text"
+                  className="form-control"
+                  name="round"
+                  value={formData.round}
+                  onChange={handleChange}
+                  required
+                />
+              </div>
+
+              <div className="row">
+                <div className="col-md-6 mb-3">
+                  <label className="form-label">Round Number</label>
+                  <input
+                    type="number"
+                    className="form-control"
+                    name="round_number"
+                    value={formData.round_number}
+                    onChange={handleChange}
+                    required
+                    min="1"
+                  />
+                </div>
+                <div className="col-md-6 mb-3">
+                  <label className="form-label">Match Number</label>
+                  <input
+                    type="number"
+                    className="form-control"
+                    name="match_number"
+                    value={formData.match_number}
+                    onChange={handleChange}
+                    required
+                    min="1"
+                  />
+                </div>
+              </div>
+
+              <div className="mb-3">
+                <label className="form-label">Team 1</label>
+                <select
+                  className="form-select"
+                  name="team1"
+                  value={formData.team1}
+                  onChange={handleChange}
+                  required
+                >
+                  <option value="">Select Team 1</option>
+                  {teams.map(team => (
+                    <option key={team.team_id} value={team.team_name}>
+                      {team.team_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="mb-3">
+                <label className="form-label">Team 2</label>
+                <select
+                  className="form-select"
+                  name="team2"
+                  value={formData.team2}
+                  onChange={handleChange}
+                  required
+                >
+                  <option value="">Select Team 2</option>
+                  {teams.map(team => (
+                    <option key={team.team_id} value={team.team_name}>
+                      {team.team_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button type="button" className="btn btn-secondary" onClick={onClose}>
+                Cancel
+              </button>
+              <button type="submit" className="btn btn-primary" disabled={loading}>
+                {loading ? 'Creating...' : 'Create Match'}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default MatchForm;
+----
+
+==== Match Result Form Component
+
+[source,javascript]
+----
+// components/MatchResultForm.js
+import React, { useState } from 'react';
+import ScheduleService from '../services/scheduleService';
+
+const MatchResultForm = ({ match, onResultSet, onClose }) => {
+  const [resultData, setResultData] = useState({
+    winner: '',
+    margin: '',
+    marginType: 'runs',
+    wonByBattingFirst: false
+  });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+
+    try {
+      const data = {
+        ...resultData,
+        margin: parseInt(resultData.margin)
+      };
+
+      const updatedMatch = await ScheduleService.setMatchResult(match.id, data);
+      onResultSet(updatedMatch);
+      onClose();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    setResultData({
+      ...resultData,
+      [name]: type === 'checkbox' ? checked : value
+    });
+  };
+
+  return (
+    <div className="modal show d-block" tabIndex="-1">
+      <div className="modal-dialog">
+        <div className="modal-content">
+          <div className="modal-header">
+            <h5 className="modal-title">Set Match Result</h5>
+            <button type="button" className="btn-close" onClick={onClose}></button>
+          </div>
+          <form onSubmit={handleSubmit}>
+            <div className="modal-body">
+              {error && <div className="alert alert-danger">{error}</div>}
+
+              <div className="mb-3">
+                <label className="form-label">Winner</label>
+                <select
+                  className="form-select"
+                  name="winner"
+                  value={resultData.winner}
+                  onChange={handleChange}
+                  required
+                >
+                  <option value="">Select Winner</option>
+                  <option value={match.team1}>{match.team1}</option>
+                  <option value={match.team2}>{match.team2}</option>
+                </select>
+              </div>
+
+              <div className="row">
+                <div className="col-md-6 mb-3">
+                  <label className="form-label">Margin</label>
+                  <input
+                    type="number"
+                    className="form-control"
+                    name="margin"
+                    value={resultData.margin}
+                    onChange={handleChange}
+                    required
+                    min="1"
+                    max={resultData.marginType === 'runs' ? 999 : 10}
+                  />
+                </div>
+                <div className="col-md-6 mb-3">
+                  <label className="form-label">Margin Type</label>
+                  <select
+                    className="form-select"
+                    name="marginType"
+                    value={resultData.marginType}
+                    onChange={handleChange}
+                    required
+                  >
+                    <option value="runs">Runs</option>
+                    <option value="wickets">Wickets</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="mb-3 form-check">
+                <input
+                  type="checkbox"
+                  className="form-check-input"
+                  id="wonByBattingFirst"
+                  name="wonByBattingFirst"
+                  checked={resultData.wonByBattingFirst}
+                  onChange={handleChange}
+                />
+                <label className="form-check-label" htmlFor="wonByBattingFirst">
+                  Won by batting first
+                </label>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button type="button" className="btn btn-secondary" onClick={onClose}>
+                Cancel
+              </button>
+              <button type="submit" className="btn btn-primary" disabled={loading}>
+                {loading ? 'Saving...' : 'Set Result'}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default MatchResultForm;
+----
+
+=== Step 4: Update Admin Panel
+
+Add schedule management to your admin panel:
+
+[source,javascript]
+----
+// pages/AdminSchedule.js
+import React, { useState, useEffect } from 'react';
+import ScheduleService from '../services/scheduleService';
+import MatchForm from '../components/MatchForm';
+import MatchResultForm from '../components/MatchResultForm';
+
+const AdminSchedule = () => {
+  const [matches, setMatches] = useState([]);
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [selectedMatch, setSelectedMatch] = useState(null);
+  const [showResultForm, setShowResultForm] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadMatches();
+  }, []);
+
+  const loadMatches = async () => {
+    try {
+      const data = await ScheduleService.getAllMatches();
+      setMatches(data);
+    } catch (err) {
+      alert('Failed to load matches: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleMatchCreated = (newMatch) => {
+    setMatches([...matches, newMatch]);
+    setShowCreateForm(false);
+  };
+
+  const handleStatusChange = async (matchId, newStatus) => {
+    try {
+      await ScheduleService.updateMatchStatus(matchId, newStatus);
+      loadMatches(); // Refresh list
+    } catch (err) {
+      alert('Failed to update status: ' + err.message);
+    }
+  };
+
+  const handleDeleteMatch = async (matchId) => {
+    if (!confirm('Are you sure you want to delete this match?')) return;
+
+    try {
+      await ScheduleService.deleteMatch(matchId);
+      setMatches(matches.filter(m => m.id !== matchId));
+    } catch (err) {
+      alert('Failed to delete match: ' + err.message);
+    }
+  };
+
+  const handleResultSet = (updatedMatch) => {
+    setMatches(matches.map(m => m.id === updatedMatch.id ? updatedMatch : m));
+    setShowResultForm(false);
+    setSelectedMatch(null);
+  };
+
+  if (loading) return <div className="text-center">Loading...</div>;
+
+  return (
+    <div className="admin-schedule">
+      <div className="d-flex justify-content-between align-items-center mb-4">
+        <h1>Schedule Management</h1>
+        <button
+          className="btn btn-primary"
+          onClick={() => setShowCreateForm(true)}
+        >
+          Create Match
+        </button>
+      </div>
+
+      <div className="table-responsive">
+        <table className="table table-striped">
+          <thead>
+            <tr>
+              <th>Round</th>
+              <th>Match</th>
+              <th>Teams</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {matches.map(match => (
+              <tr key={match.id}>
+                <td>{match.round} ({match.round_number})</td>
+                <td>{match.match_number}</td>
+                <td>{match.team1} vs {match.team2}</td>
+                <td>
+                  <span className={`badge bg-${match.status === 'live' ? 'success' : match.status === 'completed' ? 'primary' : 'secondary'}`}>
+                    {match.status}
+                  </span>
+                </td>
+                <td>
+                  {match.status === 'scheduled' && (
+                    <>
+                      <button
+                        className="btn btn-sm btn-success me-2"
+                        onClick={() => handleStatusChange(match.id, 'live')}
+                      >
+                        Start
+                      </button>
+                      <button
+                        className="btn btn-sm btn-danger me-2"
+                        onClick={() => handleDeleteMatch(match.id)}
+                      >
+                        Delete
+                      </button>
+                    </>
+                  )}
+                  {match.status === 'live' && (
+                    <>
+                      <button
+                        className="btn btn-sm btn-primary me-2"
+                        onClick={() => {
+                          setSelectedMatch(match);
+                          setShowResultForm(true);
+                        }}
+                      >
+                        Set Result
+                      </button>
+                      <button
+                        className="btn btn-sm btn-warning"
+                        onClick={() => handleStatusChange(match.id, 'scheduled')}
+                      >
+                        Pause
+                      </button>
+                    </>
+                  )}
+                  {match.status === 'completed' && match.result && (
+                    <span className="text-success">
+                      {match.result.winner} won by {match.result.margin} {match.result.margin_type}
+                    </span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {showCreateForm && (
+        <MatchForm
+          onMatchCreated={handleMatchCreated}
+          onClose={() => setShowCreateForm(false)}
+        />
+      )}
+
+      {showResultForm && selectedMatch && (
+        <MatchResultForm
+          match={selectedMatch}
+          onResultSet={handleResultSet}
+          onClose={() => {
+            setShowResultForm(false);
+            setSelectedMatch(null);
+          }}
+        />
+      )}
+    </div>
+  );
+};
+
+export default AdminSchedule;
+----
+
+=== Step 5: Update Public Schedule Page
+
+Update your public schedule display:
+
+[source,javascript]
+----
+// pages/Schedule.js
+import React, { useState, useEffect } from 'react';
+import ScheduleService from '../services/scheduleService';
+
+const Schedule = () => {
+  const [matches, setMatches] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadMatches();
+  }, []);
+
+  const loadMatches = async () => {
+    try {
+      const data = await ScheduleService.getAllMatches();
+      setMatches(data);
+    } catch (err) {
+      console.error('Failed to load matches:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const matchesByRound = matches.reduce((acc, match) => {
+    const round = match.round;
+    if (!acc[round]) acc[round] = [];
+    acc[round].push(match);
+    return acc;
+  }, {});
+
+  if (loading) return <div className="text-center py-5">Loading schedule...</div>;
+
+  return (
+    <div className="schedule-page container py-5">
+      <h1 className="text-center mb-5">ICCT26 Cricket Schedule</h1>
+
+      {Object.keys(matchesByRound).length === 0 ? (
+        <div className="text-center">
+          <p className="text-muted">No matches scheduled yet.</p>
+        </div>
+      ) : (
+        Object.entries(matchesByRound).map(([round, roundMatches]) => (
+          <div key={round} className="round-section mb-5">
+            <h2 className="round-title">{round}</h2>
+            <div className="row">
+              {roundMatches
+                .sort((a, b) => a.match_number - b.match_number)
+                .map(match => (
+                  <div key={match.id} className="col-lg-6 mb-4">
+                    <div className="card match-card h-100">
+                      <div className="card-header d-flex justify-content-between align-items-center">
+                        <h5 className="mb-0">Match {match.match_number}</h5>
+                        <span className={`badge ${
+                          match.status === 'live' ? 'bg-success' :
+                          match.status === 'completed' ? 'bg-primary' : 'bg-secondary'
+                        }`}>
+                          {match.status.toUpperCase()}
+                        </span>
+                      </div>
+                      <div className="card-body">
+                        <div className="teams-display mb-3">
+                          <div className="d-flex justify-content-between align-items-center">
+                            <div className="team text-center">
+                              <div className="team-name fw-bold">{match.team1}</div>
+                            </div>
+                            <div className="vs text-muted">VS</div>
+                            <div className="team text-center">
+                              <div className="team-name fw-bold">{match.team2}</div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {match.status === 'completed' && match.result && (
+                          <div className="result-section">
+                            <div className="alert alert-success">
+                              <h6 className="alert-heading mb-2">Match Result</h6>
+                              <p className="mb-1">
+                                <strong>{match.result.winner}</strong> won by{' '}
+                                <strong>{match.result.margin} {match.result.margin_type}</strong>
+                              </p>
+                              {match.result.won_by_batting_first && (
+                                <small className="text-muted">
+                                  (Won by batting first)
+                                </small>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {match.status === 'live' && (
+                          <div className="live-indicator">
+                            <div className="alert alert-warning">
+                              <strong>🔴 LIVE:</strong> Match in progress
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+            </div>
+          </div>
+        ))
+      )}
+    </div>
+  );
+};
+
+export default Schedule;
+----
+
+---
+
+== Testing Guide
+
+=== Manual Testing Steps
+
+. **Test Match Creation:**
++
+[source,bash]
+----
+curl -X POST http://localhost:8000/api/schedule/matches \
+  -H "Content-Type: application/json" \
+  -d '{
+    "round": "Round 1",
+    "round_number": 1,
+    "match_number": 1,
+    "team1": "SHARKS",
+    "team2": "Thadaladi"
+  }'
+----
+
+. **Test Match Retrieval:**
++
+[source,bash]
+----
+curl http://localhost:8000/api/schedule/matches
+----
+
+. **Test Status Update:**
++
+[source,bash]
+----
+curl -X PUT http://localhost:8000/api/schedule/matches/1/status \
+  -H "Content-Type: application/json" \
+  -d '{"status": "live"}'
+----
+
+. **Test Result Setting:**
++
+[source,bash]
+----
+curl -X POST http://localhost:8000/api/schedule/matches/1/result \
+  -H "Content-Type: application/json" \
+  -d '{
+    "winner": "SHARKS",
+    "margin": 45,
+    "marginType": "runs",
+    "wonByBattingFirst": true
+  }'
+----
+
+=== Frontend Testing Checklist
+
+* [ ] Match creation form works with team dropdown
+* [ ] Match list displays correctly
+* [ ] Status badges show correct colors
+* [ ] Result display shows winner and margin
+* [ ] Admin controls work (create, edit, delete, status change)
+* [ ] Public schedule shows organized by rounds
+* [ ] Error messages display properly
+* [ ] Loading states work correctly
+
+---
+
+== Deployment Checklist
+
+=== Backend Deployment
+* [ ] Database migration run on production
+* [ ] Environment variables configured
+* [ ] CORS settings updated for frontend domain
+* [ ] SSL/TLS certificates valid
+
+=== Frontend Deployment
+* [ ] API_BASE_URL updated to production backend
+* [ ] Schedule components added to routing
+* [ ] Admin panel includes schedule management
+* [ ] Public pages include schedule display
+* [ ] Error boundaries added for API failures
+
+=== Integration Testing
+* [ ] End-to-end match creation flow
+* [ ] Admin result setting workflow
+* [ ] Public schedule display
+* [ ] Mobile responsiveness
+* [ ] Cross-browser compatibility
+
+---
+
+== Troubleshooting
+
+=== Common Issues
+
+==== "Team not found" Error
+**Problem**: Team name doesn't exist in database +
+**Solution**: Use exact team names from `/api/teams` endpoint
+
+==== "Cannot update completed match" Error
+**Problem**: Trying to modify a match with status 'completed' +
+**Solution**: Only scheduled/live matches can be modified
+
+==== "Invalid margin" Error
+**Problem**: Margin value outside cricket rules +
+**Solution**: Runs margin: 1-999, Wickets margin: 1-10
+
+==== CORS Errors
+**Problem**: Frontend can't connect to backend +
+**Solution**: Add frontend domain to backend CORS settings
+
+==== 404 Errors
+**Problem**: API endpoints not found +
+**Solution**: Ensure backend is deployed with schedule routes
+
+=== Debug Steps
+
+. **Check Backend Health:**
++
+[source,bash]
+----
+curl https://your-backend-domain.com/health
+----
+
+. **Test API Connectivity:**
++
+[source,bash]
+----
+curl https://your-backend-domain.com/api/schedule/matches
+----
+
+. **Check Browser Console:**
+* Look for CORS errors
+* Check network tab for failed requests
+* Verify API_BASE_URL configuration
+
+. **Verify Team Data:**
++
+[source,bash]
+----
+curl https://your-backend-domain.com/api/teams
+----
+
+---
+
+== Additional Resources
+
+* **API Documentation**: `SCHEDULE_API_DOCUMENTATION.md`
+* **Quick Reference**: `SCHEDULE_QUICK_REFERENCE.md`
+* **Implementation Summary**: `SCHEDULE_IMPLEMENTATION_SUMMARY.md`
+
+---
+
+== Next Steps
+
+. **Implement the components** above in your frontend
+. **Test each endpoint** using the provided curl examples
+. **Update your routing** to include schedule pages
+. **Deploy to staging** for integration testing
+. **Deploy to production** once testing is complete
+
+Your cricket tournament frontend is now ready to integrate with the complete schedule management system! 🏏
+
+---
+
+**Need Help?** Refer to the comprehensive documentation files or check the troubleshooting section above.
