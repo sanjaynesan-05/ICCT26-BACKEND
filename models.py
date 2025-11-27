@@ -3,7 +3,7 @@ SQLAlchemy ORM models for ICCT26 Cricket Tournament
 Matches PostgreSQL schema on Neon database
 """
 
-from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, func, UniqueConstraint, Index
+from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, func, UniqueConstraint, Index, Boolean
 from sqlalchemy.orm import relationship
 from database import Base
 
@@ -93,3 +93,51 @@ class Player(Base):
 
     def __repr__(self):
         return f"<Player(player_id={self.player_id}, name={self.name}, team_id={self.team_id})>"
+
+
+class Match(Base):
+    """Match model for cricket tournament schedule and results"""
+    __tablename__ = "matches"
+    
+    __table_args__ = (
+        # Ensure unique match per round
+        UniqueConstraint('round_number', 'match_number', name='uq_match_round_number'),
+        # Indexes for common queries
+        Index('idx_match_status', 'status'),
+        Index('idx_match_round', 'round_number'),
+        Index('idx_match_team1', 'team1_id'),
+        Index('idx_match_team2', 'team2_id'),
+    )
+
+    # Primary key
+    id = Column(Integer, primary_key=True, index=True)
+    
+    # Match identification
+    round = Column(String(50), nullable=False)  # e.g., "Round 1", "Semi-Final"
+    round_number = Column(Integer, nullable=False)  # Numeric round (1, 2, 3...)
+    match_number = Column(Integer, nullable=False)  # Match number within round
+    
+    # Teams
+    team1_id = Column(Integer, ForeignKey("teams.id", ondelete="RESTRICT"), nullable=False, index=True)
+    team2_id = Column(Integer, ForeignKey("teams.id", ondelete="RESTRICT"), nullable=False, index=True)
+    
+    # Match status
+    status = Column(String(20), nullable=False, default="scheduled", index=True)  # 'scheduled', 'live', 'completed'
+    
+    # Result fields (NULL until match is completed)
+    winner_id = Column(Integer, ForeignKey("teams.id", ondelete="SET NULL"), nullable=True)
+    margin = Column(Integer, nullable=True)  # Numeric margin value
+    margin_type = Column(String(20), nullable=True)  # 'runs' or 'wickets'
+    won_by_batting_first = Column(Boolean, nullable=True)  # true if batting first team won
+    
+    # Timestamps
+    created_at = Column(DateTime, nullable=False, default=func.now(), server_default=func.now())
+    updated_at = Column(DateTime, nullable=False, default=func.now(), onupdate=func.now(), server_default=func.now())
+    
+    # Relationships
+    team1 = relationship("Team", foreign_keys=[team1_id])
+    team2 = relationship("Team", foreign_keys=[team2_id])
+    winner = relationship("Team", foreign_keys=[winner_id])
+
+    def __repr__(self):
+        return f"<Match(id={self.id}, round={self.round}, team1={self.team1_id}, team2={self.team2_id}, status={self.status})>"
