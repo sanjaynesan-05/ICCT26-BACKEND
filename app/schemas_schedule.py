@@ -2,7 +2,7 @@
 Pydantic schemas for cricket schedule and match management
 """
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, validator, ConfigDict
 from typing import Optional, List
 from datetime import datetime
 
@@ -15,8 +15,20 @@ class MatchResult(BaseModel):
     """Result information for a completed match"""
     winner: str = Field(..., description="Winning team name")
     margin: int = Field(..., gt=0, description="Margin of victory")
-    margin_type: str = Field(..., description="'runs' or 'wickets'")
-    won_by_batting_first: bool = Field(..., description="True if batting first team won")
+    margin_type: str = Field(..., description="'runs' or 'wickets'", alias="marginType")
+    won_by_batting_first: bool = Field(..., description="True if batting first team won", alias="wonByBattingFirst")
+    
+    model_config = ConfigDict(
+        populate_by_name=True,
+        json_schema_extra={
+            "example": {
+                "winner": "Mumbai Kings",
+                "margin": 45,
+                "margin_type": "runs",
+                "won_by_batting_first": True
+            }
+        }
+    )
     
     @validator('margin_type')
     def validate_margin_type(cls, v):
@@ -32,16 +44,6 @@ class MatchResult(BaseModel):
             elif values['margin_type'] == 'wickets' and v > 10:
                 raise ValueError("Wickets margin cannot exceed 10")
         return v
-    
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "winner": "Mumbai Kings",
-                "margin": 45,
-                "margin_type": "runs",
-                "won_by_batting_first": True
-            }
-        }
 
 
 # ============================================================
@@ -56,14 +58,8 @@ class MatchCreateRequest(BaseModel):
     team1: str = Field(..., min_length=1, description="Team 1 name")
     team2: str = Field(..., min_length=1, description="Team 2 name")
     
-    @validator('team1', 'team2')
-    def validate_team_names(cls, v):
-        if v.strip() == "":
-            raise ValueError("Team name cannot be empty")
-        return v.strip()
-    
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "round": "Round 1",
                 "round_number": 1,
@@ -72,6 +68,13 @@ class MatchCreateRequest(BaseModel):
                 "team2": "Delhi Warriors"
             }
         }
+    )
+    
+    @validator('team1', 'team2')
+    def validate_team_names(cls, v):
+        if v.strip() == "":
+            raise ValueError("Team name cannot be empty")
+        return v.strip()
 
 
 class MatchUpdateRequest(BaseModel):
@@ -82,8 +85,8 @@ class MatchUpdateRequest(BaseModel):
     team1: str = Field(..., min_length=1, description="Team 1 name")
     team2: str = Field(..., min_length=1, description="Team 2 name")
     
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "round": "Round 1",
                 "round_number": 1,
@@ -92,11 +95,20 @@ class MatchUpdateRequest(BaseModel):
                 "team2": "Delhi Warriors"
             }
         }
+    )
 
 
 class MatchStatusUpdate(BaseModel):
     """Request body for updating match status"""
     status: str = Field(..., description="Match status: 'scheduled', 'live', or 'completed'")
+    
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "status": "live"
+            }
+        }
+    )
     
     @validator('status')
     def validate_status(cls, v):
@@ -104,13 +116,6 @@ class MatchStatusUpdate(BaseModel):
         if v not in valid_statuses:
             raise ValueError(f"Status must be one of: {', '.join(valid_statuses)}")
         return v
-    
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "status": "live"
-            }
-        }
 
 
 # ============================================================
@@ -130,8 +135,8 @@ class MatchResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "id": 1,
                 "round": "Round 1",
@@ -150,6 +155,7 @@ class MatchResponse(BaseModel):
                 "updated_at": "2025-11-27T12:00:00"
             }
         }
+    )
 
 
 # ============================================================
