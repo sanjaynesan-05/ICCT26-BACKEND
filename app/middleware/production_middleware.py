@@ -100,17 +100,30 @@ class BodySizeLimitMiddleware(BaseHTTPMiddleware):
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
     """
-    Rate limiting: 30 requests per minute per IP address.
+    Rate limiting: Configurable requests per minute per IP address.
+    Exempts certain endpoints to allow higher throughput for read-heavy operations.
     """
     
-    def __init__(self, app, requests_per_minute: int = 30):
+    # Endpoints exempt from rate limiting (read operations, public data)
+    EXEMPT_PATHS = [
+        "/health",
+        "/status",
+        "/api/teams",  # Public teams listing
+        "/api/schedule/matches",  # Public schedule listing
+        "/api/gallery",  # Public gallery
+        "/docs",  # API documentation
+        "/redoc",  # API documentation
+        "/openapi.json"  # OpenAPI schema
+    ]
+    
+    def __init__(self, app, requests_per_minute: int = 100):
         super().__init__(app)
         self.requests_per_minute = requests_per_minute
         self.requests = defaultdict(list)
     
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
-        # Skip rate limiting for health checks
-        if request.url.path in ["/health", "/status"]:
+        # Skip rate limiting for exempt paths
+        if any(request.url.path.startswith(path) for path in self.EXEMPT_PATHS):
             return await call_next(request)
         
         # Get client IP
@@ -123,17 +136,18 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             if now - req_time < timedelta(minutes=1)
         ]
         
-        # Check rate limit
+        # Check rate limit (for non-exempt paths)
         if len(self.requests[client_ip]) >= self.requests_per_minute:
             logger.warning(
                 f"Rate limit exceeded for IP",
                 extra={
                     "ip": client_ip,
-                    "requests_in_minute": len(self.requests[client_ip])
+                    "requests_in_minute": len(self.requests[client_ip]),
+                    "path": request.url.path
                 }
             )
             return Response(
-                content='{"success": false, "error_code": "RATE_LIMIT_EXCEEDED", "message": "Too many requests"}',
+                content='{"success": false, "error_code": "RATE_LIMIT_EXCEEDED", "message": "Too many requests. Please try again later."}',
                 status_code=429,
                 media_type="application/json"
             )

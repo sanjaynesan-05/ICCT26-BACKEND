@@ -75,7 +75,7 @@ class Settings(BaseSettings):
     SECRET_KEY: str = Field(default="change-me-in-production", description="Secret key for JWT/session signing")
     MAX_REQUEST_SIZE: int = Field(default=100 * 1024 * 1024, description="Maximum request body size in bytes (50MB for team registration with multiple images)")
     REQUEST_TIMEOUT: int = Field(default=180, description="Request timeout in seconds (increased for file uploads)")
-    RATE_LIMIT_REQUESTS: int = Field(default=30, description="Max requests per minute per IP")
+    RATE_LIMIT_REQUESTS: int = Field(default=100, description="Max requests per minute per IP (increased for read-heavy operations)")
     
     # ============= LOGGING CONFIGURATION =============
     LOG_LEVEL: str = Field(default="INFO", description="Logging level")
