@@ -311,17 +311,19 @@ class MatchStartRequest(BaseModel):
 class FirstInningsScoreRequest(BaseModel):
     """Request body for updating first innings score (Stage 3A)
     
-    Records the score of the team that batted first.
-    Moves match from "live" to "in-progress" status if needed.
+    Records the runs and wickets of the team that batted first.
+    Moves match from "live" status (remains live).
     """
     batting_team: str = Field(..., min_length=1, description="Team name that batted first")
-    score: int = Field(..., gt=0, le=999, description="Runs scored (1-999)")
+    runs: int = Field(..., ge=0, le=999, description="Runs scored in first innings (0-999)")
+    wickets: int = Field(..., ge=0, le=10, description="Wickets lost in first innings (0-10)")
     
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
                 "batting_team": "Team A",
-                "score": 165
+                "runs": 165,
+                "wickets": 8
             }
         }
     )
@@ -330,17 +332,19 @@ class FirstInningsScoreRequest(BaseModel):
 class SecondInningsScoreRequest(BaseModel):
     """Request body for updating second innings score (Stage 3B)
     
-    Records the score of the team that batted second.
-    Match remains in "in-progress" status.
+    Records the runs and wickets of the team that batted second.
+    Match remains in "live" status.
     """
     batting_team: str = Field(..., min_length=1, description="Team name that batted second")
-    score: int = Field(..., gt=0, le=999, description="Runs scored (1-999)")
+    runs: int = Field(..., ge=0, le=999, description="Runs scored in second innings (0-999)")
+    wickets: int = Field(..., ge=0, le=10, description="Wickets lost in second innings (0-10)")
     
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
                 "batting_team": "Team B",
-                "score": 152
+                "runs": 152,
+                "wickets": 5
             }
         }
     )

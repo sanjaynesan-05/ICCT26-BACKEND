@@ -64,7 +64,7 @@ def match_to_response(match: Match, db: Session = None) -> dict:
             team1_name = team1.team_name if team1 else "Unknown"
             team2_name = team2.team_name if team2 else "Unknown"
         
-        # Build basic match response (first innings scores only)
+        # Build basic match response with runs and wickets
         response = {
             "id": match.id,
             "round": match.round,
@@ -78,8 +78,12 @@ def match_to_response(match: Match, db: Session = None) -> dict:
             "scheduled_start_time": match.scheduled_start_time,
             "actual_start_time": match.actual_start_time,
             "match_end_time": match.match_end_time,
-            "team1_first_innings_score": match.team1_first_innings_score,
-            "team2_first_innings_score": match.team2_first_innings_score,
+            "team1_runs": match.team1_runs,
+            "team1_wickets": match.team1_wickets,
+            "team2_runs": match.team2_runs,
+            "team2_wickets": match.team2_wickets,
+            "team1_first_innings_score": match.team1_first_innings_score,  # Legacy field
+            "team2_first_innings_score": match.team2_first_innings_score,  # Legacy field
             "match_score_url": match.match_score_url,
             "result": None,
             "created_at": match.created_at,
@@ -108,7 +112,7 @@ def match_to_response(match: Match, db: Session = None) -> dict:
     
     except Exception as e:
         logger.error(f"Error converting match to response: {str(e)}")
-        # Return minimal response on error (first innings scores only)
+        # Return minimal response on error
         return {
             "id": match.id,
             "round": match.round,
@@ -122,8 +126,10 @@ def match_to_response(match: Match, db: Session = None) -> dict:
             "scheduled_start_time": match.scheduled_start_time,
             "actual_start_time": match.actual_start_time,
             "match_end_time": match.match_end_time,
-            "team1_first_innings_score": match.team1_first_innings_score,
-            "team2_first_innings_score": match.team2_first_innings_score,
+            "team1_runs": match.team1_runs,
+            "team1_wickets": match.team1_wickets,
+            "team2_runs": match.team2_runs,
+            "team2_wickets": match.team2_wickets,
             "result": None,
             "created_at": match.created_at,
             "updated_at": match.updated_at
@@ -754,8 +760,8 @@ async def update_first_innings_score(match_id: int, request: FirstInningsScoreRe
     """
     UPDATE FIRST INNINGS SCORE (Stage 3A of 4-Stage Workflow)
     
-    Records the score of the team that batted first.
-    Moves match from 'live' to 'in-progress' if still in 'live' status.
+    Records the runs and wickets of the team that batted first.
+    Moves match from 'live' status (remains live).
     
     This is the third step in the match workflow:
     1. Create match (POST /matches) ← Stage 1
@@ -765,13 +771,14 @@ async def update_first_innings_score(match_id: int, request: FirstInningsScoreRe
     
     Request body:
     - batting_team: Team name that batted first (must match team1 or team2)
-    - score: Runs scored (1-999)
+    - runs: Runs scored (0-999)
+    - wickets: Wickets lost (0-10)
     
     Status transitions:
-    - From: "live" or "in-progress"
-    - To: "in-progress" (if was "live")
+    - From: "live"
+    - To: "live" (no change)
     
-    Returns: Full match object with updated score
+    Returns: Full match object with updated runs and wickets
     """
     try:
         logger.info(f"Updating first innings score for match {match_id}")
@@ -788,6 +795,14 @@ async def update_first_innings_score(match_id: int, request: FirstInningsScoreRe
                         f"but is '{match.status}'"
             )
         
+        # Validate wickets range
+        if not (0 <= request.wickets <= 10):
+            raise HTTPException(status_code=400, detail="Wickets must be between 0 and 10")
+        
+        # Validate runs range
+        if not (0 <= request.runs <= 999):
+            raise HTTPException(status_code=400, detail="Runs must be between 0 and 999")
+        
         # Get batting team
         batting_team = get_team_by_name(db, request.batting_team)
         
@@ -798,11 +813,17 @@ async def update_first_innings_score(match_id: int, request: FirstInningsScoreRe
                 detail=f"Team '{request.batting_team}' is not part of this match"
             )
         
-        # Update correct team's score
+        # Update correct team's runs and wickets
         if batting_team.id == match.team1_id:
-            match.team1_first_innings_score = request.score
+            match.team1_runs = request.runs
+            match.team1_wickets = request.wickets
+            # Backward compatibility: also set old score field
+            match.team1_first_innings_score = request.runs
         else:
-            match.team2_first_innings_score = request.score
+            match.team2_runs = request.runs
+            match.team2_wickets = request.wickets
+            # Backward compatibility: also set old score field
+            match.team2_first_innings_score = request.runs
         
         # Status remains "live" (no change)
         match.updated_at = datetime.now(timezone.utc)
@@ -810,7 +831,7 @@ async def update_first_innings_score(match_id: int, request: FirstInningsScoreRe
         db.commit()
         db.refresh(match)
         
-        logger.info(f"✅ First innings score updated for match {match_id}")
+        logger.info(f"✅ First innings score updated for match {match_id}: {request.runs}-{request.wickets}")
         
         return {
             "success": True,
@@ -829,26 +850,27 @@ async def update_first_innings_score(match_id: int, request: FirstInningsScoreRe
 @router.put("/matches/{match_id}/second-innings-score", response_model=MatchSingleResponse)
 async def update_second_innings_score(match_id: int, request: SecondInningsScoreRequest, db: Session = Depends(get_db)):
     """
-    UPDATE SECOND INNINGS SCORE (Stage 3B of 4-Stage Workflow)
+    RECORD SECOND INNINGS SCORE (Stage 3 of 4-Stage Workflow - Part 2)
     
-    Records the score of the team that batted second.
-    Match remains in 'in-progress' status.
+    Records the runs and wickets of the team that batted second.
+    Match remains in 'live' status until finish endpoint is called.
     
-    This is part of the third step in the match workflow:
+    Each team plays only ONE innings per match:
+    - Team A bats first (based on toss choice)
+    - Team B bats second (based on toss choice) ← You are recording this
+    
+    Workflow:
     1. Create match (POST /matches) ← Stage 1
-    2. Start match (PUT /matches/{id}/start) ← Stage 2
-    3. **Update scores (PUT /matches/{id}/first-innings-score, then /second-innings-score)** ← You are here (Stage 3)
+    2. Start match (PUT /matches/{id}/start) ← Stage 2: Coin toss determines batting order
+    3. **Record scores (PUT /matches/{id}/first-innings-score, then /second-innings-score)** ← Stage 3 (You are here)
     4. Finish match (PUT /matches/{id}/finish) ← Stage 4
     
     Request body:
-    - batting_team: Team name that batted second (must match team1 or team2)
-    - score: Runs scored (1-999)
+    - batting_team: Team name that batted second
+    - runs: Runs scored by batting team (0-999)
+    - wickets: Wickets lost by batting team (0-10)
     
-    Status transitions:
-    - From: "in-progress"
-    - To: "in-progress" (no change)
-    
-    Returns: Full match object with updated score
+    Returns: Full match object with all scores recorded
     """
     try:
         logger.info(f"Updating second innings score for match {match_id}")
@@ -866,11 +888,19 @@ async def update_second_innings_score(match_id: int, request: SecondInningsScore
             )
         
         # Validate first innings score exists
-        if match.team1_first_innings_score is None and match.team2_first_innings_score is None:
+        if match.team1_runs is None and match.team2_runs is None:
             raise HTTPException(
                 status_code=400,
                 detail="Cannot update second innings: First innings score not recorded yet"
             )
+        
+        # Validate wickets range
+        if not (0 <= request.wickets <= 10):
+            raise HTTPException(status_code=400, detail="Wickets must be between 0 and 10")
+        
+        # Validate runs range
+        if not (0 <= request.runs <= 999):
+            raise HTTPException(status_code=400, detail="Runs must be between 0 and 999")
         
         # Get batting team
         batting_team = get_team_by_name(db, request.batting_team)
@@ -882,18 +912,24 @@ async def update_second_innings_score(match_id: int, request: SecondInningsScore
                 detail=f"Team '{request.batting_team}' is not part of this match"
             )
         
-        # Update correct team's score
+        # Update correct team's runs and wickets
         if batting_team.id == match.team1_id:
-            match.team1_first_innings_score = request.score
+            match.team1_runs = request.runs
+            match.team1_wickets = request.wickets
+            # Backward compatibility: also set old score field
+            match.team1_second_innings_score = request.runs
         else:
-            match.team2_first_innings_score = request.score
+            match.team2_runs = request.runs
+            match.team2_wickets = request.wickets
+            # Backward compatibility: also set old score field
+            match.team2_second_innings_score = request.runs
         
         match.updated_at = datetime.now(timezone.utc)
         
         db.commit()
         db.refresh(match)
         
-        logger.info(f"✅ Second innings score updated for match {match_id}")
+        logger.info(f"✅ Second innings score updated for match {match_id}: {request.runs}-{request.wickets}")
         
         return {
             "success": True,

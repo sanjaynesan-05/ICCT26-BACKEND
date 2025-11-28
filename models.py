@@ -133,11 +133,19 @@ class Match(Base):
     actual_start_time = Column(DateTime, nullable=True)  # When match actually started
     match_end_time = Column(DateTime, nullable=True)  # When match ended
     
-    # Innings scores
-    team1_first_innings_score = Column(Integer, nullable=True)  # Team 1 score (first innings or batting first)
-    team2_first_innings_score = Column(Integer, nullable=True)  # Team 2 score (first innings or batting first)
-    team1_second_innings_score = Column(Integer, nullable=True)  # Team 1 score in second innings
-    team2_second_innings_score = Column(Integer, nullable=True)  # Team 2 score in second innings
+    # Innings Scores (NEW - Separated runs and wickets)
+    # Team 1 = Team that batted first (based on toss choice)
+    # Team 2 = Team that batted second (based on toss choice)
+    team1_runs = Column(Integer, nullable=True, default=0)  # Team 1 (batting first) - runs scored
+    team1_wickets = Column(Integer, nullable=True, default=0)  # Team 1 (batting first) - wickets lost (0-10)
+    team2_runs = Column(Integer, nullable=True, default=0)  # Team 2 (batting second) - runs scored
+    team2_wickets = Column(Integer, nullable=True, default=0)  # Team 2 (batting second) - wickets lost (0-10)
+    
+    # Legacy fields - DEPRECATED (kept for backward compatibility, will be removed in v2.0)
+    team1_first_innings_score = Column(Integer, nullable=True)  # DEPRECATED: Use team1_runs
+    team2_first_innings_score = Column(Integer, nullable=True)  # DEPRECATED: Use team2_runs
+    team1_second_innings_score = Column(Integer, nullable=True)  # DEPRECATED: No longer used
+    team2_second_innings_score = Column(Integer, nullable=True)  # DEPRECATED: No longer used
     
     # Result fields (NULL until match is completed)
     winner_id = Column(Integer, ForeignKey("teams.id", ondelete="SET NULL"), nullable=True)
