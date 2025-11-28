@@ -2,7 +2,7 @@
 Pydantic schemas for cricket schedule and match management
 """
 
-from pydantic import BaseModel, Field, validator, ConfigDict
+from pydantic import BaseModel, Field, field_validator, ConfigDict
 from typing import Optional, List
 from datetime import datetime
 
@@ -26,7 +26,8 @@ class TossDetails(BaseModel):
         }
     )
     
-    @validator('toss_choice')
+    @field_validator('toss_choice')
+    @classmethod
     def validate_toss_choice(cls, v):
         if v.lower() not in ['bat', 'bowl']:
             raise ValueError("toss_choice must be 'bat' or 'bowl'")
@@ -98,18 +99,20 @@ class MatchResult(BaseModel):
         }
     )
     
-    @validator('margin_type')
+    @field_validator('margin_type')
+    @classmethod
     def validate_margin_type(cls, v):
         if v not in ['runs', 'wickets']:
             raise ValueError("margin_type must be 'runs' or 'wickets'")
         return v
     
-    @validator('margin')
-    def validate_margin(cls, v, values):
-        if 'margin_type' in values:
-            if values['margin_type'] == 'runs' and v > 999:
+    @field_validator('margin')
+    @classmethod
+    def validate_margin(cls, v, info):
+        if 'margin_type' in info.data:
+            if info.data['margin_type'] == 'runs' and v > 999:
                 raise ValueError("Runs margin cannot exceed 999")
-            elif values['margin_type'] == 'wickets' and v > 10:
+            elif info.data['margin_type'] == 'wickets' and v > 10:
                 raise ValueError("Wickets margin cannot exceed 10")
         return v
 
@@ -138,7 +141,8 @@ class MatchCreateRequest(BaseModel):
         }
     )
     
-    @validator('team1', 'team2')
+    @field_validator('team1', 'team2')
+    @classmethod
     def validate_team_names(cls, v):
         if v.strip() == "":
             raise ValueError("Team name cannot be empty")
@@ -178,7 +182,8 @@ class MatchStatusUpdate(BaseModel):
         }
     )
     
-    @validator('status')
+    @field_validator('status')
+    @classmethod
     def validate_status(cls, v):
         valid_statuses = ['scheduled', 'live', 'completed']
         if v not in valid_statuses:
@@ -200,7 +205,8 @@ class TossUpdateRequest(BaseModel):
         }
     )
     
-    @validator('toss_choice')
+    @field_validator('toss_choice')
+    @classmethod
     def validate_toss_choice(cls, v):
         if v.lower() not in ['bat', 'bowl']:
             raise ValueError("toss_choice must be 'bat' or 'bowl'")
@@ -251,11 +257,129 @@ class MatchScoreUrlUpdateRequest(BaseModel):
         }
     )
     
-    @validator('match_score_url')
+    @field_validator('match_score_url')
+    @classmethod
     def validate_url(cls, v):
         if not v.strip().startswith(('http://', 'https://')):
             raise ValueError("match_score_url must be a valid HTTP or HTTPS URL")
         return v.strip()
+
+
+# ============================================================
+# WORKFLOW-SPECIFIC REQUEST SCHEMAS (4-Stage Flow)
+# ============================================================
+
+class MatchStartRequest(BaseModel):
+    """Request body for starting a match (Stage 2)
+    
+    Combines toss details, scorecard URL, and actual start time.
+    Moves match from "upcoming" to "live" status.
+    """
+    toss_winner: str = Field(..., min_length=1, description="Team name that won the toss")
+    toss_choice: str = Field(..., description="'bat' or 'bowl'")
+    match_score_url: str = Field(..., min_length=1, description="URL to match scorecard")
+    actual_start_time: datetime = Field(..., description="Actual match start time")
+    
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "toss_winner": "Team A",
+                "toss_choice": "bat",
+                "match_score_url": "https://example.com/match/123/scorecard",
+                "actual_start_time": "2025-11-28T10:15:00"
+            }
+        }
+    )
+    
+    @field_validator('toss_choice')
+    @classmethod
+    def validate_toss_choice(cls, v):
+        if v.lower() not in ['bat', 'bowl']:
+            raise ValueError("toss_choice must be 'bat' or 'bowl'")
+        return v.lower()
+    
+    @field_validator('match_score_url')
+    @classmethod
+    def validate_url(cls, v):
+        if not v.strip().startswith(('http://', 'https://')):
+            raise ValueError("match_score_url must be a valid HTTP or HTTPS URL")
+        return v.strip()
+
+
+class FirstInningsScoreRequest(BaseModel):
+    """Request body for updating first innings score (Stage 3A)
+    
+    Records the score of the team that batted first.
+    Moves match from "live" to "in-progress" status if needed.
+    """
+    batting_team: str = Field(..., min_length=1, description="Team name that batted first")
+    score: int = Field(..., gt=0, le=999, description="Runs scored (1-999)")
+    
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "batting_team": "Team A",
+                "score": 165
+            }
+        }
+    )
+
+
+class SecondInningsScoreRequest(BaseModel):
+    """Request body for updating second innings score (Stage 3B)
+    
+    Records the score of the team that batted second.
+    Match remains in "in-progress" status.
+    """
+    batting_team: str = Field(..., min_length=1, description="Team name that batted second")
+    score: int = Field(..., gt=0, le=999, description="Runs scored (1-999)")
+    
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "batting_team": "Team B",
+                "score": 152
+            }
+        }
+    )
+
+
+class MatchFinishRequest(BaseModel):
+    """Request body for finishing a match (Stage 4)
+    
+    Records match winner, margin, and end time.
+    Moves match from "in-progress" to "completed" status.
+    """
+    winner: str = Field(..., min_length=1, description="Winning team name")
+    margin: int = Field(..., gt=0, le=999, description="Margin of victory (runs or wickets)")
+    margin_type: str = Field(..., description="Type of margin: 'runs' or 'wickets'")
+    match_end_time: datetime = Field(..., description="When match ended")
+    
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "winner": "Team A",
+                "margin": 13,
+                "margin_type": "runs",
+                "match_end_time": "2025-11-28T13:45:00"
+            }
+        }
+    )
+    
+    @field_validator('margin_type')
+    @classmethod
+    def validate_margin_type(cls, v):
+        if v not in ['runs', 'wickets']:
+            raise ValueError("margin_type must be 'runs' or 'wickets'")
+        return v
+    
+    @field_validator('margin')
+    @classmethod
+    def validate_margin(cls, v, info):
+        if 'margin_type' in info.data:
+            if info.data['margin_type'] == 'wickets' and v > 10:
+                raise ValueError("Wickets margin cannot exceed 10")
+        return v
 
 
 # ============================================================
