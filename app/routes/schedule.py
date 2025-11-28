@@ -21,7 +21,11 @@ from app.schemas_schedule import (
     MatchesListResponse,
     MatchSingleResponse,
     ExportResponse,
-    ApiResponse
+    ApiResponse,
+    TossUpdateRequest,
+    MatchTimingUpdateRequest,
+    InningsScoresUpdateRequest,
+    MatchScoreUrlUpdateRequest
 )
 
 logger = logging.getLogger(__name__)
@@ -43,31 +47,83 @@ def get_team_by_name(db: Session, team_name: str) -> Team:
     return team
 
 
-def match_to_response(match: Match) -> dict:
-    """Convert Match ORM object to response dict with team names"""
-    result = None
+def match_to_response(match: Match, db: Session = None) -> dict:
+    """Convert Match ORM object to response dict with team names - first innings only"""
+    try:
+        # Get team names
+        team1_name = "Unknown"
+        team2_name = "Unknown"
+        
+        if db:
+            team1 = db.query(Team).filter(Team.id == match.team1_id).first()
+            team2 = db.query(Team).filter(Team.id == match.team2_id).first()
+            team1_name = team1.team_name if team1 else "Unknown"
+            team2_name = team2.team_name if team2 else "Unknown"
+        
+        # Build basic match response (first innings scores only)
+        response = {
+            "id": match.id,
+            "round": match.round,
+            "round_number": match.round_number,
+            "match_number": match.match_number,
+            "team1": team1_name,
+            "team2": team2_name,
+            "status": match.status,
+            "toss_winner": None,
+            "toss_choice": match.toss_choice,
+            "scheduled_start_time": match.scheduled_start_time,
+            "actual_start_time": match.actual_start_time,
+            "match_end_time": match.match_end_time,
+            "team1_first_innings_score": match.team1_first_innings_score,
+            "team2_first_innings_score": match.team2_first_innings_score,
+            "match_score_url": match.match_score_url,
+            "result": None,
+            "created_at": match.created_at,
+            "updated_at": match.updated_at
+        }
+        
+        # Add toss winner name if available
+        if match.toss_winner_id and db:
+            toss_winner = db.query(Team).filter(Team.id == match.toss_winner_id).first()
+            if toss_winner:
+                response["toss_winner"] = toss_winner.team_name
+        
+        # Add result if match is completed
+        if match.status == 'completed' and match.winner_id and db:
+            winner_team = db.query(Team).filter(Team.id == match.winner_id).first()
+            if winner_team:
+                result = {
+                    "winner": winner_team.team_name,
+                    "margin": match.margin,
+                    "margin_type": match.margin_type,
+                    "won_by_batting_first": match.won_by_batting_first
+                }
+                response["result"] = result
+        
+        return response
     
-    # Build result object only if match is completed
-    if match.status == 'completed' and match.winner_id:
-        result = MatchResult(
-            winner=match.winner.team_name,
-            margin=match.margin,
-            margin_type=match.margin_type,
-            won_by_batting_first=match.won_by_batting_first
-        )
-    
-    return {
-        "id": match.id,
-        "round": match.round,
-        "round_number": match.round_number,
-        "match_number": match.match_number,
-        "team1": match.team1.team_name,
-        "team2": match.team2.team_name,
-        "status": match.status,
-        "result": result.dict() if result else None,
-        "created_at": match.created_at,
-        "updated_at": match.updated_at
-    }
+    except Exception as e:
+        logger.error(f"Error converting match to response: {str(e)}")
+        # Return minimal response on error (first innings scores only)
+        return {
+            "id": match.id,
+            "round": match.round,
+            "round_number": match.round_number,
+            "match_number": match.match_number,
+            "team1": "Unknown",
+            "team2": "Unknown",
+            "status": match.status,
+            "toss_winner": None,
+            "toss_choice": match.toss_choice,
+            "scheduled_start_time": match.scheduled_start_time,
+            "actual_start_time": match.actual_start_time,
+            "match_end_time": match.match_end_time,
+            "team1_first_innings_score": match.team1_first_innings_score,
+            "team2_first_innings_score": match.team2_first_innings_score,
+            "result": None,
+            "created_at": match.created_at,
+            "updated_at": match.updated_at
+        }
 
 
 # ============================================================
@@ -88,7 +144,7 @@ async def get_all_matches(db: Session = Depends(get_db)):
             Match.match_number.asc()
         ).all()
         
-        matches_data = [match_to_response(m) for m in matches]
+        matches_data = [match_to_response(m, db) for m in matches]
         
         logger.info(f"✅ Successfully fetched {len(matches)} matches")
         
@@ -100,6 +156,36 @@ async def get_all_matches(db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"❌ Error fetching matches: {str(e)}")
         raise HTTPException(status_code=500, detail="Error fetching matches")
+
+
+@router.get("/matches/{match_id}", response_model=MatchSingleResponse)
+async def get_match(match_id: int, db: Session = Depends(get_db)):
+    """
+    Fetch a single match by ID.
+    """
+    try:
+        logger.info(f"Fetching match {match_id}")
+        
+        match = db.query(Match).filter(Match.id == match_id).first()
+        if not match:
+            raise HTTPException(status_code=404, detail="Match not found")
+        
+        logger.info(f"✅ Successfully fetched match {match_id}")
+        
+        match_data = match_to_response(match, db)
+        match_response = MatchResponse.model_validate(match_data)
+        
+        return MatchSingleResponse(
+            success=True,
+            message="Match fetched successfully",
+            data=match_response
+        )
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error fetching match: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error fetching match")
 
 
 @router.post("/matches", response_model=MatchSingleResponse, status_code=201)
@@ -153,12 +239,12 @@ async def create_match(request: MatchCreateRequest, db: Session = Depends(get_db
         db.commit()
         db.refresh(new_match)
         
-        logger.info(f"✅ Match created successfully (ID: {new_match.id})")
+        logger.info(f"✅ Match created successfully: {new_match.id}")
         
         return {
             "success": True,
             "message": "Match created successfully",
-            "data": match_to_response(new_match)
+            "data": match_to_response(new_match, db)
         }
     
     except HTTPException:
@@ -231,7 +317,7 @@ async def update_match(match_id: int, request: MatchUpdateRequest, db: Session =
         return {
             "success": True,
             "message": "Match updated successfully",
-            "data": match_to_response(match)
+            "data": match_to_response(match, db)
         }
     
     except HTTPException:
@@ -320,12 +406,12 @@ async def update_match_status(match_id: int, request: MatchStatusUpdate, db: Ses
         db.commit()
         db.refresh(match)
         
-        logger.info(f"✅ Match {match_id} status updated to {request.status}")
+        logger.info(f"✅ Match {match_id} status updated to {match.status}")
         
         return {
             "success": True,
-            "message": f"Match status updated to {request.status}",
-            "data": match_to_response(match)
+            "message": f"Match status updated to {match.status}",
+            "data": match_to_response(match, db)
         }
     
     except HTTPException:
@@ -396,7 +482,7 @@ async def set_match_result(match_id: int, request: MatchResult, db: Session = De
         return {
             "success": True,
             "message": "Match result saved successfully",
-            "data": match_to_response(match)
+            "data": match_to_response(match, db)
         }
     
     except HTTPException:
@@ -405,6 +491,175 @@ async def set_match_result(match_id: int, request: MatchResult, db: Session = De
         db.rollback()
         logger.error(f"❌ Error setting match result: {str(e)}")
         raise HTTPException(status_code=500, detail="Error saving match result")
+
+
+@router.put("/matches/{match_id}/toss", response_model=MatchSingleResponse)
+async def update_toss(match_id: int, request: TossUpdateRequest, db: Session = Depends(get_db)):
+    """
+    Update toss details for a match.
+    
+    - toss_winner: Team name that won the toss
+    - toss_choice: 'bat' or 'bowl'
+    """
+    try:
+        logger.info(f"Updating toss for match {match_id}")
+        
+        match = db.query(Match).filter(Match.id == match_id).first()
+        if not match:
+            raise HTTPException(status_code=404, detail="Match not found")
+        
+        # Get the toss winner team
+        toss_winner_team = get_team_by_name(db, request.toss_winner)
+        
+        # Toss winner must be one of the two teams
+        if toss_winner_team.id not in [match.team1_id, match.team2_id]:
+            raise HTTPException(
+                status_code=400,
+                detail="Toss winner must be one of the teams in this match"
+            )
+        
+        match.toss_winner_id = toss_winner_team.id
+        match.toss_choice = request.toss_choice.lower()
+        match.updated_at = datetime.utcnow()
+        
+        db.commit()
+        db.refresh(match)
+        
+        logger.info(f"✅ Toss updated for match {match_id}")
+        
+        return {
+            "success": True,
+            "message": "Toss details updated successfully",
+            "data": match_to_response(match, db)
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"❌ Error updating toss: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error updating toss details")
+
+
+@router.put("/matches/{match_id}/timing", response_model=MatchSingleResponse)
+async def update_match_timing(match_id: int, request: MatchTimingUpdateRequest, db: Session = Depends(get_db)):
+    """
+    Update match timing details.
+    
+    - scheduled_start_time: When match is scheduled to start
+    - actual_start_time: When match actually started
+    - match_end_time: When match ended
+    """
+    try:
+        logger.info(f"Updating timing for match {match_id}")
+        
+        match = db.query(Match).filter(Match.id == match_id).first()
+        if not match:
+            raise HTTPException(status_code=404, detail="Match not found")
+        
+        if request.scheduled_start_time:
+            match.scheduled_start_time = request.scheduled_start_time
+        if request.actual_start_time:
+            match.actual_start_time = request.actual_start_time
+        if request.match_end_time:
+            match.match_end_time = request.match_end_time
+        
+        match.updated_at = datetime.utcnow()
+        
+        db.commit()
+        db.refresh(match)
+        
+        logger.info(f"✅ Timing updated for match {match_id}")
+        
+        return {
+            "success": True,
+            "message": "Match timing updated successfully",
+            "data": match_to_response(match, db)
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"❌ Error updating timing: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error updating match timing")
+
+
+@router.put("/matches/{match_id}/scores", response_model=MatchSingleResponse)
+async def update_innings_scores(match_id: int, request: InningsScoresUpdateRequest, db: Session = Depends(get_db)):
+    """
+    Update first innings scores for both teams.
+    
+    - team1_first_innings_score: Team 1 first innings score
+    - team2_first_innings_score: Team 2 first innings score
+    """
+    try:
+        logger.info(f"Updating scores for match {match_id}")
+        
+        match = db.query(Match).filter(Match.id == match_id).first()
+        if not match:
+            raise HTTPException(status_code=404, detail="Match not found")
+        
+        if request.team1_first_innings_score is not None:
+            match.team1_first_innings_score = request.team1_first_innings_score
+        if request.team2_first_innings_score is not None:
+            match.team2_first_innings_score = request.team2_first_innings_score
+        
+        match.updated_at = datetime.utcnow()
+        
+        db.commit()
+        db.refresh(match)
+        
+        logger.info(f"✅ Scores updated for match {match_id}")
+        
+        return {
+            "success": True,
+            "message": "Innings scores updated successfully",
+            "data": match_to_response(match, db)
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"❌ Error updating scores: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error updating innings scores")
+
+
+@router.put("/matches/{match_id}/score-url", response_model=MatchSingleResponse)
+async def update_match_score_url(match_id: int, request: MatchScoreUrlUpdateRequest, db: Session = Depends(get_db)):
+    """
+    Update match score URL (link to external scorecard).
+    
+    - match_score_url: URL to match score/scorecard (must be HTTP or HTTPS)
+    """
+    try:
+        logger.info(f"Updating match score URL for match {match_id}")
+        
+        match = db.query(Match).filter(Match.id == match_id).first()
+        if not match:
+            raise HTTPException(status_code=404, detail="Match not found")
+        
+        match.match_score_url = request.match_score_url
+        match.updated_at = datetime.utcnow()
+        
+        db.commit()
+        db.refresh(match)
+        
+        logger.info(f"✅ Match score URL updated for match {match_id}")
+        
+        return {
+            "success": True,
+            "message": "Match score URL updated successfully",
+            "data": match_to_response(match, db)
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"❌ Error updating match score URL: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error updating match score URL")
 
 
 @router.post("/export", response_model=ExportResponse)
@@ -422,7 +677,7 @@ async def export_schedule(db: Session = Depends(get_db)):
             Match.match_number.asc()
         ).all()
         
-        matches_data = [match_to_response(m) for m in matches]
+        matches_data = [match_to_response(m, db) for m in matches]
         
         logger.info(f"✅ Schedule exported ({len(matches)} matches)")
         

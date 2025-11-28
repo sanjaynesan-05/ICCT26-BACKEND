@@ -8,6 +8,74 @@ from datetime import datetime
 
 
 # ============================================================
+# Toss Details Schema
+# ============================================================
+
+class TossDetails(BaseModel):
+    """Toss information for a match"""
+    toss_winner: str = Field(..., description="Team name that won the toss")
+    toss_choice: str = Field(..., description="'bat' or 'bowl'")
+    
+    model_config = ConfigDict(
+        populate_by_name=True,
+        json_schema_extra={
+            "example": {
+                "toss_winner": "Mumbai Kings",
+                "toss_choice": "bat"
+            }
+        }
+    )
+    
+    @validator('toss_choice')
+    def validate_toss_choice(cls, v):
+        if v.lower() not in ['bat', 'bowl']:
+            raise ValueError("toss_choice must be 'bat' or 'bowl'")
+        return v.lower()
+
+
+# ============================================================
+# Match Timing Schema
+# ============================================================
+
+class MatchTiming(BaseModel):
+    """Match timing information"""
+    scheduled_start_time: Optional[datetime] = Field(None, description="Scheduled match start time")
+    actual_start_time: Optional[datetime] = Field(None, description="Actual match start time")
+    match_end_time: Optional[datetime] = Field(None, description="Match end time")
+    
+    model_config = ConfigDict(
+        populate_by_name=True,
+        json_schema_extra={
+            "example": {
+                "scheduled_start_time": "2025-11-27T10:00:00",
+                "actual_start_time": "2025-11-27T10:15:00",
+                "match_end_time": "2025-11-27T13:45:00"
+            }
+        }
+    )
+
+
+# ============================================================
+# Innings Scores Schema
+# ============================================================
+
+class InningsScores(BaseModel):
+    """Innings scores for both teams"""
+    team1_first_innings_score: Optional[int] = Field(None, gt=0, description="Team 1 first innings score")
+    team2_first_innings_score: Optional[int] = Field(None, gt=0, description="Team 2 first innings score")
+    
+    model_config = ConfigDict(
+        populate_by_name=True,
+        json_schema_extra={
+            "example": {
+                "team1_first_innings_score": 165,
+                "team2_first_innings_score": 152
+            }
+        }
+    )
+
+
+# ============================================================
 # Match Result Schema
 # ============================================================
 
@@ -118,6 +186,78 @@ class MatchStatusUpdate(BaseModel):
         return v
 
 
+class TossUpdateRequest(BaseModel):
+    """Request body for updating toss details"""
+    toss_winner: str = Field(..., min_length=1, description="Team that won the toss")
+    toss_choice: str = Field(..., description="'bat' or 'bowl'")
+    
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "toss_winner": "Mumbai Kings",
+                "toss_choice": "bat"
+            }
+        }
+    )
+    
+    @validator('toss_choice')
+    def validate_toss_choice(cls, v):
+        if v.lower() not in ['bat', 'bowl']:
+            raise ValueError("toss_choice must be 'bat' or 'bowl'")
+        return v.lower()
+
+
+class MatchTimingUpdateRequest(BaseModel):
+    """Request body for updating match timing"""
+    scheduled_start_time: Optional[datetime] = Field(None, description="Scheduled match start time")
+    actual_start_time: Optional[datetime] = Field(None, description="Actual match start time")
+    match_end_time: Optional[datetime] = Field(None, description="Match end time")
+    
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "scheduled_start_time": "2025-11-27T10:00:00",
+                "actual_start_time": "2025-11-27T10:15:00",
+                "match_end_time": "2025-11-27T13:45:00"
+            }
+        }
+    )
+
+
+class InningsScoresUpdateRequest(BaseModel):
+    """Request body for updating innings scores"""
+    team1_first_innings_score: Optional[int] = Field(None, gt=0, description="Team 1 first innings score")
+    team2_first_innings_score: Optional[int] = Field(None, gt=0, description="Team 2 first innings score")
+    
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "team1_first_innings_score": 165,
+                "team2_first_innings_score": 152
+            }
+        }
+    )
+
+
+class MatchScoreUrlUpdateRequest(BaseModel):
+    """Request body for updating match score URL"""
+    match_score_url: str = Field(..., min_length=1, description="URL to match score/scorecard")
+    
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "match_score_url": "https://example.com/matches/123/scorecard"
+            }
+        }
+    )
+    
+    @validator('match_score_url')
+    def validate_url(cls, v):
+        if not v.strip().startswith(('http://', 'https://')):
+            raise ValueError("match_score_url must be a valid HTTP or HTTPS URL")
+        return v.strip()
+
+
 # ============================================================
 # Match Response Schemas
 # ============================================================
@@ -131,7 +271,27 @@ class MatchResponse(BaseModel):
     team1: str
     team2: str
     status: str
+    
+    # Toss details
+    toss_winner: Optional[str] = None
+    toss_choice: Optional[str] = None
+    
+    # Match timing
+    scheduled_start_time: Optional[datetime] = None
+    actual_start_time: Optional[datetime] = None
+    match_end_time: Optional[datetime] = None
+    
+    # Innings scores (first innings only)
+    team1_first_innings_score: Optional[int] = None
+    team2_first_innings_score: Optional[int] = None
+    
+    # Match score URL
+    match_score_url: Optional[str] = None
+    
+    # Result
     result: Optional[MatchResult] = None
+    
+    # Timestamps
     created_at: datetime
     updated_at: datetime
     
@@ -145,6 +305,13 @@ class MatchResponse(BaseModel):
                 "team1": "Mumbai Kings",
                 "team2": "Delhi Warriors",
                 "status": "completed",
+                "toss_winner": "Mumbai Kings",
+                "toss_choice": "bat",
+                "scheduled_start_time": "2025-11-27T10:00:00",
+                "actual_start_time": "2025-11-27T10:15:00",
+                "match_end_time": "2025-11-27T13:45:00",
+                "team1_first_innings_score": 165,
+                "team2_first_innings_score": 152,
                 "result": {
                     "winner": "Mumbai Kings",
                     "margin": 45,
