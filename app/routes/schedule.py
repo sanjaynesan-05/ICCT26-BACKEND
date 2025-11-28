@@ -236,7 +236,8 @@ async def create_match(request: MatchCreateRequest, db: Session = Depends(get_db
             match_number=request.match_number,
             team1_id=team1.id,
             team2_id=team2.id,
-            status="scheduled"
+            status="scheduled",
+            scheduled_start_time=request.scheduled_start_time
         )
         
         db.add(new_match)
