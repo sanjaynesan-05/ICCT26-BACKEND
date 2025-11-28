@@ -124,20 +124,39 @@ class Match(Base):
     # Match status
     status = Column(String(20), nullable=False, default="scheduled", index=True)  # 'scheduled', 'live', 'completed'
     
+    # Toss details
+    toss_winner_id = Column(Integer, ForeignKey("teams.id", ondelete="SET NULL"), nullable=True)  # Team that won the toss
+    toss_choice = Column(String(10), nullable=True)  # 'bat' or 'bowl'
+    
+    # Match timing
+    scheduled_start_time = Column(DateTime, nullable=True)  # When match is scheduled to start
+    actual_start_time = Column(DateTime, nullable=True)  # When match actually started
+    match_end_time = Column(DateTime, nullable=True)  # When match ended
+    
+    # Innings scores
+    team1_first_innings_score = Column(Integer, nullable=True)  # Team 1 score (first innings or batting first)
+    team2_first_innings_score = Column(Integer, nullable=True)  # Team 2 score (first innings or batting first)
+    team1_second_innings_score = Column(Integer, nullable=True)  # Team 1 score in second innings
+    team2_second_innings_score = Column(Integer, nullable=True)  # Team 2 score in second innings
+    
     # Result fields (NULL until match is completed)
     winner_id = Column(Integer, ForeignKey("teams.id", ondelete="SET NULL"), nullable=True)
     margin = Column(Integer, nullable=True)  # Numeric margin value
     margin_type = Column(String(20), nullable=True)  # 'runs' or 'wickets'
     won_by_batting_first = Column(Boolean, nullable=True)  # true if batting first team won
     
+    # Match score URL
+    match_score_url = Column(String(500), nullable=True)  # URL to external match score/scorecard
+    
     # Timestamps
     created_at = Column(DateTime, nullable=False, default=func.now(), server_default=func.now())
     updated_at = Column(DateTime, nullable=False, default=func.now(), onupdate=func.now(), server_default=func.now())
     
     # Relationships
-    team1 = relationship("Team", foreign_keys=[team1_id])
-    team2 = relationship("Team", foreign_keys=[team2_id])
-    winner = relationship("Team", foreign_keys=[winner_id])
+    team1 = relationship("Team", foreign_keys=[team1_id], viewonly=True, lazy="selectin")
+    team2 = relationship("Team", foreign_keys=[team2_id], viewonly=True, lazy="selectin")
+    winner = relationship("Team", foreign_keys=[winner_id], viewonly=True, lazy="selectin")
+    toss_winner = relationship("Team", foreign_keys=[toss_winner_id], viewonly=True, lazy="selectin")
 
     def __repr__(self):
         return f"<Match(id={self.id}, round={self.round}, team1={self.team1_id}, team2={self.team2_id}, status={self.status})>"
