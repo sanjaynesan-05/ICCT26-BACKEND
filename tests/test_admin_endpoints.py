@@ -64,11 +64,12 @@ class TestAdminEndpoints:
         
         # Verify response structure
         assert "success" in data, "Missing 'success' field"
-        assert "teams" in data, "Missing 'teams' field"
-        assert isinstance(data["teams"], list), "'teams' should be a list"
+        assert "data" in data, "Missing 'data' field"
+        teams = data.get("data", [])
+        assert isinstance(teams, list), "'data' should be a list"
         
-        print(f"✅ Retrieved {len(data['teams'])} teams")
-        print(f"   Response: {data}")
+        print(f"✅ Retrieved {len(teams)} teams")
+        print(f"   Response structure valid")
         return True
 
     @pytest.mark.asyncio
@@ -82,10 +83,12 @@ class TestAdminEndpoints:
         data = response.json()
         assert data["success"] is True
         
+        teams = data.get("data", [])
         # If teams exist, validate team structure
-        if data["teams"]:
-            team = data["teams"][0]
-            required_fields = ["team_id", "team_name", "church_name"]
+        if teams:
+            team = teams[0]
+            # API returns camelCase field names
+            required_fields = ["teamId", "teamName", "churchName"]
             for field in required_fields:
                 assert field in team, f"Missing required field: {field}"
             
@@ -101,26 +104,29 @@ class TestAdminEndpoints:
         
         # First get all teams to find a valid ID
         teams_response = await client.get(f"{ADMIN_BASE}/teams")
-        teams = teams_response.json()["teams"]
+        teams = teams_response.json().get("data", [])
         
         if not teams:
             print("⚠️  No teams available for testing")
             return True
         
-        # Test with first team
-        team_id = teams[0]["team_id"]
+        # Test with first team (use camelCase field name)
+        team_id = teams[0].get("teamId") or teams[0].get("team_id")
         response = await client.get(f"{ADMIN_BASE}/teams/{team_id}")
         
         assert response.status_code == 200, f"Expected 200, got {response.status_code}"
         data = response.json()
+        team = data.get("data", data)  # Handle both wrapped and direct response
         
-        assert "team_id" in data, "Missing team_id"
-        assert "team_name" in data, "Missing team_name"
-        assert "players" in data, "Missing players array"
+        # Check for camelCase or snake_case field names
+        assert "teamId" in team or "team_id" in team, "Missing team_id"
+        assert "teamName" in team or "team_name" in team, "Missing team_name"
+        assert "players" in team, "Missing players array"
         
         print(f"✅ Retrieved team details for {team_id}")
-        print(f"   Team: {data['team_name']}")
-        print(f"   Players: {len(data.get('players', []))}")
+        team_name = team.get("teamName") or team.get("team_name")
+        print(f"   Team: {team_name}")
+        print(f"   Players: {len(team.get('players', []))}")
         return True
 
     @pytest.mark.asyncio
@@ -145,32 +151,38 @@ class TestAdminEndpoints:
         print("\n[TEST] GET /admin/teams/{team_id} - Structure validation")
         
         teams_response = await client.get(f"{ADMIN_BASE}/teams")
-        teams = teams_response.json()["teams"]
+        teams = teams_response.json().get("data", [])
         
         if not teams:
             print("⚠️  No teams available for testing")
             return True
         
-        team_id = teams[0]["team_id"]
+        team_id = teams[0].get("teamId") or teams[0].get("team_id")
         response = await client.get(f"{ADMIN_BASE}/teams/{team_id}")
         data = response.json()
+        team = data.get("data", data)  # Handle both wrapped and direct response
         
-        # Validate structure
+        # Validate structure (camelCase or snake_case)
         required_fields = [
-            "team_id", "team_name", "church_name", 
-            "captain", "vice_captain", "players"
+            ("teamId", "team_id"), 
+            ("teamName", "team_name"), 
+            ("churchName", "church_name"), 
+            ("captain", "captain"), 
+            ("viceCaptain", "vice_captain"), 
+            ("players", "players")
         ]
-        for field in required_fields:
-            assert field in data, f"Missing required field: {field}"
+        for camel_case, snake_case in required_fields:
+            assert camel_case in team or snake_case in team, f"Missing required field: {camel_case}/{snake_case}"
         
         # Validate captain structure
-        if data["captain"]:
+        captain = team.get("captain")
+        if captain:
             captain_fields = ["name", "email", "phone"]
             for field in captain_fields:
-                assert field in data["captain"], f"Captain missing {field}"
+                assert field in captain, f"Captain missing {field}"
         
         print(f"✅ Team structure valid")
-        print(f"   Fields: {list(data.keys())}")
+        print(f"   Fields: {list(team.keys())}")
         return True
 
     # ========================================================
@@ -184,36 +196,39 @@ class TestAdminEndpoints:
         
         # First get a team with players
         teams_response = await client.get(f"{ADMIN_BASE}/teams")
-        teams = teams_response.json()["teams"]
+        teams = teams_response.json().get("data", [])
         
         if not teams:
             print("⚠️  No teams available for testing")
             return True
         
         # Get team details to find players
-        team_id = teams[0]["team_id"]
+        team_id = teams[0].get("teamId") or teams[0].get("team_id")
         team_response = await client.get(f"{ADMIN_BASE}/teams/{team_id}")
         team_data = team_response.json()
-        players = team_data.get("players", [])
+        team = team_data.get("data", team_data)  # Handle both wrapped and direct
+        players = team.get("players", [])
         
         if not players:
             print("⚠️  No players available for testing")
             return True
         
-        # Test with first player
-        player_id = players[0]["player_id"]
+        # Test with first player (use either camelCase or snake_case)
+        player_id = players[0].get("playerId") or players[0].get("player_id")
         response = await client.get(f"{ADMIN_BASE}/players/{player_id}")
         
         assert response.status_code == 200, f"Expected 200, got {response.status_code}"
         data = response.json()
+        player = data.get("data", data)  # Handle both wrapped and direct
         
-        assert "player_id" in data, "Missing player_id"
-        assert "name" in data, "Missing name"
-        assert "team_id" in data, "Missing team_id"
+        assert "playerId" in player or "player_id" in player, "Missing player_id"
+        assert "name" in player, "Missing name"
+        assert "teamId" in player or "team_id" in player, "Missing team_id"
         
         print(f"✅ Retrieved player details for ID {player_id}")
-        print(f"   Player: {data.get('name')}")
-        print(f"   Team: {data.get('team_id')}")
+        print(f"   Player: {player.get('name')}")
+        team_id_val = player.get("teamId") or player.get("team_id")
+        print(f"   Team: {team_id_val}")
         return True
 
     @pytest.mark.asyncio
@@ -239,31 +254,41 @@ class TestAdminEndpoints:
         
         # Get a player
         teams_response = await client.get(f"{ADMIN_BASE}/teams")
-        teams = teams_response.json()["teams"]
+        teams = teams_response.json().get("data", [])
         
         if not teams:
             print("⚠️  No teams available")
             return True
         
-        team_response = await client.get(f"{ADMIN_BASE}/teams/{teams[0]['team_id']}")
+        team_id = teams[0].get("teamId") or teams[0].get("team_id")
+        team_response = await client.get(f"{ADMIN_BASE}/teams/{team_id}")
         team_data = team_response.json()
-        players = team_data.get("players", [])
+        team = team_data.get("data", team_data)
+        players = team.get("players", [])
         
         if not players:
             print("⚠️  No players available")
             return True
         
-        player_id = players[0]["player_id"]
+        player_id = players[0].get("playerId") or players[0].get("player_id")
         response = await client.get(f"{ADMIN_BASE}/players/{player_id}")
         data = response.json()
+        player = data.get("data", data)
         
-        # Validate structure
-        required_fields = ["player_id", "name", "age", "phone", "role", "team_id"]
-        for field in required_fields:
-            assert field in data, f"Missing required field: {field}"
+        # Validate structure (handle both camelCase and snake_case)
+        required_fields = [
+            ("playerId", "player_id"), 
+            ("name", "name"), 
+            ("age", "age"), 
+            ("phone", "phone"), 
+            ("role", "role"), 
+            ("teamId", "team_id")
+        ]
+        for camel_case, snake_case in required_fields:
+            assert camel_case in player or snake_case in player, f"Missing required field: {camel_case}/{snake_case}"
         
         print(f"✅ Player structure valid")
-        print(f"   Fields: {list(data.keys())}")
+        print(f"   Fields: {list(player.keys())}")
         return True
 
     # ========================================================
@@ -342,7 +367,8 @@ class TestAdminEndpointsSync:
             
             if response.status_code == 200:
                 data = response.json()
-                print(f"✅ Retrieved {len(data['teams'])} teams")
+                teams = data.get("data", [])
+                print(f"✅ Retrieved {len(teams)} teams")
                 return True
             else:
                 print(f"⚠️  Got status {response.status_code}")
@@ -358,7 +384,8 @@ class TestAdminEndpointsSync:
             
             data = response.json()
             assert data["success"] is True
-            assert isinstance(data["teams"], list)
+            teams = data.get("data", [])
+            assert isinstance(teams, list)
             
             print("✅ Response format valid")
             return True

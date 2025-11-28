@@ -113,10 +113,6 @@ class Settings:
     ALLOWED_DOCUMENT_TYPES: List[str] = [
         'application/pdf'
     ]
-    
-    class Config:
-        """Pydantic config"""
-        case_sensitive = True
 
 
 # Create settings instance

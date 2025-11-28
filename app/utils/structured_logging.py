@@ -7,7 +7,7 @@ Production-grade logging with JSON format, file output, and request tracking.
 import logging
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict
 import uuid
@@ -24,7 +24,7 @@ class JSONFormatter(logging.Formatter):
         Format log record as JSON.
         """
         log_data = {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),

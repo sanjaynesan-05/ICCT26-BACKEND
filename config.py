@@ -6,7 +6,7 @@ All required production configurations are validated at startup.
 """
 
 from pydantic_settings import BaseSettings
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, ConfigDict
 from typing import Optional, List
 import os
 
@@ -95,11 +95,12 @@ class Settings(BaseSettings):
     APP_DESCRIPTION: str = Field(default="Team registration system with email notifications and admin panel", description="Application description")
     APP_VERSION: str = Field(default="1.0.0", description="Application version")
     
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = False
-        extra = "ignore"
+    model_config = ConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore"
+    )
     
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod

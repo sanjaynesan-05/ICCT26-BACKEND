@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, Depends, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_
 from typing import List
-from datetime import datetime
+from datetime import datetime, timezone
 
 from database import get_db
 from models import Match, Team
@@ -25,7 +25,11 @@ from app.schemas_schedule import (
     TossUpdateRequest,
     MatchTimingUpdateRequest,
     InningsScoresUpdateRequest,
-    MatchScoreUrlUpdateRequest
+    MatchScoreUrlUpdateRequest,
+    MatchStartRequest,
+    FirstInningsScoreRequest,
+    SecondInningsScoreRequest,
+    MatchFinishRequest
 )
 
 logger = logging.getLogger(__name__)
@@ -307,7 +311,7 @@ async def update_match(match_id: int, request: MatchUpdateRequest, db: Session =
         match.match_number = request.match_number
         match.team1_id = team1.id
         match.team2_id = team2.id
-        match.updated_at = datetime.utcnow()
+        match.updated_at = datetime.now(timezone.utc)
         
         db.commit()
         db.refresh(match)
@@ -401,7 +405,7 @@ async def update_match_status(match_id: int, request: MatchStatusUpdate, db: Ses
             )
         
         match.status = request.status
-        match.updated_at = datetime.utcnow()
+        match.updated_at = datetime.now(timezone.utc)
         
         db.commit()
         db.refresh(match)
@@ -472,7 +476,7 @@ async def set_match_result(match_id: int, request: MatchResult, db: Session = De
         match.margin_type = request.margin_type
         match.won_by_batting_first = request.won_by_batting_first
         match.status = 'completed'  # Auto-set to completed
-        match.updated_at = datetime.utcnow()
+        match.updated_at = datetime.now(timezone.utc)
         
         db.commit()
         db.refresh(match)
@@ -520,7 +524,7 @@ async def update_toss(match_id: int, request: TossUpdateRequest, db: Session = D
         
         match.toss_winner_id = toss_winner_team.id
         match.toss_choice = request.toss_choice.lower()
-        match.updated_at = datetime.utcnow()
+        match.updated_at = datetime.now(timezone.utc)
         
         db.commit()
         db.refresh(match)
@@ -564,7 +568,7 @@ async def update_match_timing(match_id: int, request: MatchTimingUpdateRequest, 
         if request.match_end_time:
             match.match_end_time = request.match_end_time
         
-        match.updated_at = datetime.utcnow()
+        match.updated_at = datetime.now(timezone.utc)
         
         db.commit()
         db.refresh(match)
@@ -605,7 +609,7 @@ async def update_innings_scores(match_id: int, request: InningsScoresUpdateReque
         if request.team2_first_innings_score is not None:
             match.team2_first_innings_score = request.team2_first_innings_score
         
-        match.updated_at = datetime.utcnow()
+        match.updated_at = datetime.now(timezone.utc)
         
         db.commit()
         db.refresh(match)
@@ -641,7 +645,7 @@ async def update_match_score_url(match_id: int, request: MatchScoreUrlUpdateRequ
             raise HTTPException(status_code=404, detail="Match not found")
         
         match.match_score_url = request.match_score_url
-        match.updated_at = datetime.utcnow()
+        match.updated_at = datetime.now(timezone.utc)
         
         db.commit()
         db.refresh(match)
@@ -660,6 +664,349 @@ async def update_match_score_url(match_id: int, request: MatchScoreUrlUpdateRequ
         db.rollback()
         logger.error(f"❌ Error updating match score URL: {str(e)}")
         raise HTTPException(status_code=500, detail="Error updating match score URL")
+
+
+# ============================================================
+# WORKFLOW ENDPOINTS (4-Stage Match Lifecycle)
+# ============================================================
+
+@router.put("/matches/{match_id}/start", response_model=MatchSingleResponse)
+async def start_match(match_id: int, request: MatchStartRequest, db: Session = Depends(get_db)):
+    """
+    START MATCH (Stage 2 of 4-Stage Workflow)
+    
+    Starts a match and moves it from 'scheduled' to 'live' status.
+    Sets toss details, scorecard URL, and actual start time.
+    
+    This is the second step in the match workflow:
+    1. Create match (POST /matches) ← Stage 1
+    2. **Start match (PUT /matches/{id}/start)** ← You are here (Stage 2)
+    3. Update scores (PUT /matches/{id}/first-innings-score, then /second-innings-score) ← Stage 3
+    4. Finish match (PUT /matches/{id}/finish) ← Stage 4
+    
+    Request body:
+    - toss_winner: Team name that won the toss (must match team1 or team2)
+    - toss_choice: 'bat' or 'bowl'
+    - match_score_url: URL to external scorecard (HTTP/HTTPS)
+    - actual_start_time: When match actually started
+    
+    Status transitions:
+    - From: "scheduled"
+    - To: "live"
+    
+    Returns: Full match object with all fields
+    """
+    try:
+        logger.info(f"Starting match {match_id}")
+        
+        match = db.query(Match).filter(Match.id == match_id).first()
+        if not match:
+            raise HTTPException(status_code=404, detail="Match not found")
+        
+        # Validate status is "scheduled"
+        if match.status != "scheduled":
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cannot start match: Status must be 'scheduled', but is '{match.status}'. "
+                        f"Match already started or completed!"
+            )
+        
+        # Get toss winner team
+        toss_winner_team = get_team_by_name(db, request.toss_winner)
+        
+        # Validate toss_winner matches one of the teams
+        if toss_winner_team.id not in [match.team1_id, match.team2_id]:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Toss winner '{request.toss_winner}' does not match either team"
+            )
+        
+        # Update match with start details
+        match.toss_winner_id = toss_winner_team.id
+        match.toss_choice = request.toss_choice
+        match.match_score_url = request.match_score_url
+        match.actual_start_time = request.actual_start_time
+        match.status = "live"
+        match.updated_at = datetime.now(timezone.utc)
+        
+        db.commit()
+        db.refresh(match)
+        
+        logger.info(f"✅ Match {match_id} started successfully. Status: live")
+        
+        return {
+            "success": True,
+            "message": "Match started successfully. First innings has begun!",
+            "data": match_to_response(match, db)
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"❌ Error starting match: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error starting match")
+
+
+@router.put("/matches/{match_id}/first-innings-score", response_model=MatchSingleResponse)
+async def update_first_innings_score(match_id: int, request: FirstInningsScoreRequest, db: Session = Depends(get_db)):
+    """
+    UPDATE FIRST INNINGS SCORE (Stage 3A of 4-Stage Workflow)
+    
+    Records the score of the team that batted first.
+    Moves match from 'live' to 'in-progress' if still in 'live' status.
+    
+    This is the third step in the match workflow:
+    1. Create match (POST /matches) ← Stage 1
+    2. Start match (PUT /matches/{id}/start) ← Stage 2
+    3. **Update scores (PUT /matches/{id}/first-innings-score, then /second-innings-score)** ← You are here (Stage 3)
+    4. Finish match (PUT /matches/{id}/finish) ← Stage 4
+    
+    Request body:
+    - batting_team: Team name that batted first (must match team1 or team2)
+    - score: Runs scored (1-999)
+    
+    Status transitions:
+    - From: "live" or "in-progress"
+    - To: "in-progress" (if was "live")
+    
+    Returns: Full match object with updated score
+    """
+    try:
+        logger.info(f"Updating first innings score for match {match_id}")
+        
+        match = db.query(Match).filter(Match.id == match_id).first()
+        if not match:
+            raise HTTPException(status_code=404, detail="Match not found")
+        
+        # Validate status is "live" or "in-progress"
+        if match.status not in ["live", "in-progress"]:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cannot update first innings: Match status must be 'live' or 'in-progress', "
+                        f"but is '{match.status}'"
+            )
+        
+        # Get batting team
+        batting_team = get_team_by_name(db, request.batting_team)
+        
+        # Validate team is one of the match teams
+        if batting_team.id not in [match.team1_id, match.team2_id]:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Team '{request.batting_team}' is not part of this match"
+            )
+        
+        # Update correct team's score
+        if batting_team.id == match.team1_id:
+            match.team1_first_innings_score = request.score
+        else:
+            match.team2_first_innings_score = request.score
+        
+        # Transition to in-progress if still live
+        if match.status == "live":
+            match.status = "in-progress"
+        
+        match.updated_at = datetime.now(timezone.utc)
+        
+        db.commit()
+        db.refresh(match)
+        
+        logger.info(f"✅ First innings score updated for match {match_id}")
+        
+        return {
+            "success": True,
+            "message": "First innings score recorded. Match in progress!",
+            "data": match_to_response(match, db)
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"❌ Error updating first innings score: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error updating first innings score")
+
+
+@router.put("/matches/{match_id}/second-innings-score", response_model=MatchSingleResponse)
+async def update_second_innings_score(match_id: int, request: SecondInningsScoreRequest, db: Session = Depends(get_db)):
+    """
+    UPDATE SECOND INNINGS SCORE (Stage 3B of 4-Stage Workflow)
+    
+    Records the score of the team that batted second.
+    Match remains in 'in-progress' status.
+    
+    This is part of the third step in the match workflow:
+    1. Create match (POST /matches) ← Stage 1
+    2. Start match (PUT /matches/{id}/start) ← Stage 2
+    3. **Update scores (PUT /matches/{id}/first-innings-score, then /second-innings-score)** ← You are here (Stage 3)
+    4. Finish match (PUT /matches/{id}/finish) ← Stage 4
+    
+    Request body:
+    - batting_team: Team name that batted second (must match team1 or team2)
+    - score: Runs scored (1-999)
+    
+    Status transitions:
+    - From: "in-progress"
+    - To: "in-progress" (no change)
+    
+    Returns: Full match object with updated score
+    """
+    try:
+        logger.info(f"Updating second innings score for match {match_id}")
+        
+        match = db.query(Match).filter(Match.id == match_id).first()
+        if not match:
+            raise HTTPException(status_code=404, detail="Match not found")
+        
+        # Validate status is "in-progress"
+        if match.status != "in-progress":
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cannot update second innings: Match status must be 'in-progress', "
+                        f"but is '{match.status}'. Start the match first!"
+            )
+        
+        # Validate first innings score exists
+        if match.team1_first_innings_score is None and match.team2_first_innings_score is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot update second innings: First innings score not recorded yet"
+            )
+        
+        # Get batting team
+        batting_team = get_team_by_name(db, request.batting_team)
+        
+        # Validate team is one of the match teams
+        if batting_team.id not in [match.team1_id, match.team2_id]:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Team '{request.batting_team}' is not part of this match"
+            )
+        
+        # Update correct team's score
+        if batting_team.id == match.team1_id:
+            match.team1_first_innings_score = request.score
+        else:
+            match.team2_first_innings_score = request.score
+        
+        match.updated_at = datetime.now(timezone.utc)
+        
+        db.commit()
+        db.refresh(match)
+        
+        logger.info(f"✅ Second innings score updated for match {match_id}")
+        
+        return {
+            "success": True,
+            "message": "Second innings score recorded. Ready to finish match!",
+            "data": match_to_response(match, db)
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"❌ Error updating second innings score: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error updating second innings score")
+
+
+@router.put("/matches/{match_id}/finish", response_model=MatchSingleResponse)
+async def finish_match(match_id: int, request: MatchFinishRequest, db: Session = Depends(get_db)):
+    """
+    FINISH MATCH (Stage 4 of 4-Stage Workflow)
+    
+    Completes a match and moves it from 'in-progress' to 'completed' status.
+    Records winner, margin, and match end time.
+    
+    This is the final step in the match workflow:
+    1. Create match (POST /matches) ← Stage 1
+    2. Start match (PUT /matches/{id}/start) ← Stage 2
+    3. Update scores (PUT /matches/{id}/first-innings-score, then /second-innings-score) ← Stage 3
+    4. **Finish match (PUT /matches/{id}/finish)** ← You are here (Stage 4)
+    
+    Request body:
+    - winner: Team name that won (must match team1 or team2)
+    - margin: Margin of victory (1-999 for runs, 1-10 for wickets)
+    - margin_type: Type of margin ('runs' or 'wickets')
+    - match_end_time: When match ended
+    
+    Status transitions:
+    - From: "in-progress"
+    - To: "completed"
+    
+    Returns: Full match object with all results
+    """
+    try:
+        logger.info(f"Finishing match {match_id}")
+        
+        match = db.query(Match).filter(Match.id == match_id).first()
+        if not match:
+            raise HTTPException(status_code=404, detail="Match not found")
+        
+        # Validate status is "in-progress"
+        if match.status != "in-progress":
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cannot finish match: Status must be 'in-progress', but is '{match.status}'. "
+                        f"Match must be started and scores recorded first!"
+            )
+        
+        # Validate both innings scores exist
+        if match.team1_first_innings_score is None or match.team2_first_innings_score is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot finish match: Both innings scores must be recorded first"
+            )
+        
+        # Get winner team
+        winner_team = get_team_by_name(db, request.winner)
+        
+        # Validate winner matches one of the teams
+        if winner_team.id not in [match.team1_id, match.team2_id]:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Winner '{request.winner}' does not match either team"
+            )
+        
+        # Update match with result details
+        match.winner_id = winner_team.id
+        match.margin = request.margin
+        match.margin_type = request.margin_type
+        match.match_end_time = request.match_end_time
+        match.status = "completed"
+        match.updated_at = datetime.now(timezone.utc)
+        # Debug logging to ensure margin_type is received and set correctly
+        logger.info(f"Finish request.margin_type={request.margin_type}")
+        logger.info(f"Match object margin_type before commit={match.margin_type}")
+        
+        # Determine if batting first team won
+        first_innings_batting_team = None
+        if match.toss_choice == "bat":
+            first_innings_batting_team = match.toss_winner_id
+        else:
+            # If toss winner chose to bowl, the other team batted first
+            first_innings_batting_team = match.team2_id if match.toss_winner_id == match.team1_id else match.team1_id
+        
+        match.won_by_batting_first = (winner_team.id == first_innings_batting_team)
+        
+        db.commit()
+        db.refresh(match)
+        
+        logger.info(f"✅ Match {match_id} finished successfully. Status: completed")
+        
+        return {
+            "success": True,
+            "message": "Match completed successfully!",
+            "data": match_to_response(match, db)
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"❌ Error finishing match: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error finishing match")
 
 
 @router.post("/export", response_model=ExportResponse)
