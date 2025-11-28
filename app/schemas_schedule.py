@@ -128,6 +128,7 @@ class MatchCreateRequest(BaseModel):
     match_number: int = Field(..., gt=0, description="Match number within round")
     team1: str = Field(..., min_length=1, description="Team 1 name")
     team2: str = Field(..., min_length=1, description="Team 2 name")
+    scheduled_start_time: Optional[datetime] = Field(None, description="Scheduled match start time")
     
     model_config = ConfigDict(
         json_schema_extra={
@@ -136,7 +137,8 @@ class MatchCreateRequest(BaseModel):
                 "round_number": 1,
                 "match_number": 1,
                 "team1": "Mumbai Kings",
-                "team2": "Delhi Warriors"
+                "team2": "Delhi Warriors",
+                "scheduled_start_time": "2025-11-28T14:00:00"
             }
         }
     )
