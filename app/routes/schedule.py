@@ -92,8 +92,8 @@ def match_to_response(match: Match, db: Session = None) -> dict:
             if toss_winner:
                 response["toss_winner"] = toss_winner.team_name
         
-        # Add result if match is completed
-        if match.status == 'completed' and match.winner_id and db:
+        # Add result if match is done
+        if match.status == 'done' and match.winner_id and db:
             winner_team = db.query(Team).filter(Team.id == match.winner_id).first()
             if winner_team:
                 result = {
@@ -273,11 +273,11 @@ async def update_match(match_id: int, request: MatchUpdateRequest, db: Session =
         if not match:
             raise HTTPException(status_code=404, detail="Match not found")
         
-        # Prevent updating completed matches
-        if match.status == 'completed':
+        # Prevent updating done matches
+        if match.status == 'done':
             raise HTTPException(
                 status_code=409,
-                detail="Cannot update a match that is completed"
+                detail="Cannot update a match that is done"
             )
         
         # Validate new teams exist
@@ -347,11 +347,11 @@ async def delete_match(match_id: int, db: Session = Depends(get_db)):
         if not match:
             raise HTTPException(status_code=404, detail="Match not found")
         
-        # Prevent deleting live or completed matches
-        if match.status in ['live', 'completed']:
+        # Prevent deleting live or done matches
+        if match.status in ['live', 'done']:
             raise HTTPException(
                 status_code=409,
-                detail="Cannot delete a match that is live or completed"
+                detail="Cannot delete a match that is live or done"
             )
         
         db.delete(match)
@@ -393,9 +393,9 @@ async def update_match_status(match_id: int, request: MatchStatusUpdate, db: Ses
         
         # Validate status transition
         valid_transitions = {
-            'scheduled': ['live', 'completed'],
-            'live': ['completed'],
-            'completed': []  # No transitions from completed
+            'scheduled': ['live', 'done'],
+            'live': ['done'],
+            'done': []  # No transitions from done
         }
         
         if request.status not in valid_transitions.get(match.status, []):
@@ -779,11 +779,11 @@ async def update_first_innings_score(match_id: int, request: FirstInningsScoreRe
         if not match:
             raise HTTPException(status_code=404, detail="Match not found")
         
-        # Validate status is "live" or "in-progress"
-        if match.status not in ["live", "in-progress"]:
+        # Validate status is "live"
+        if match.status != "live":
             raise HTTPException(
                 status_code=400,
-                detail=f"Cannot update first innings: Match status must be 'live' or 'in-progress', "
+                detail=f"Cannot update first innings: Match status must be 'live', "
                         f"but is '{match.status}'"
             )
         
@@ -803,10 +803,7 @@ async def update_first_innings_score(match_id: int, request: FirstInningsScoreRe
         else:
             match.team2_first_innings_score = request.score
         
-        # Transition to in-progress if still live
-        if match.status == "live":
-            match.status = "in-progress"
-        
+        # Status remains "live" (no change)
         match.updated_at = datetime.now(timezone.utc)
         
         db.commit()
@@ -859,11 +856,11 @@ async def update_second_innings_score(match_id: int, request: SecondInningsScore
         if not match:
             raise HTTPException(status_code=404, detail="Match not found")
         
-        # Validate status is "in-progress"
-        if match.status != "in-progress":
+        # Validate status is "live"
+        if match.status != "live":
             raise HTTPException(
                 status_code=400,
-                detail=f"Cannot update second innings: Match status must be 'in-progress', "
+                detail=f"Cannot update second innings: Match status must be 'live', "
                         f"but is '{match.status}'. Start the match first!"
             )
         
@@ -944,11 +941,11 @@ async def finish_match(match_id: int, request: MatchFinishRequest, db: Session =
         if not match:
             raise HTTPException(status_code=404, detail="Match not found")
         
-        # Validate status is "in-progress"
-        if match.status != "in-progress":
+        # Validate status is "live"
+        if match.status != "live":
             raise HTTPException(
                 status_code=400,
-                detail=f"Cannot finish match: Status must be 'in-progress', but is '{match.status}'. "
+                detail=f"Cannot finish match: Status must be 'live', but is '{match.status}'. "
                         f"Match must be started and scores recorded first!"
             )
         
@@ -974,7 +971,7 @@ async def finish_match(match_id: int, request: MatchFinishRequest, db: Session =
         match.margin = request.margin
         match.margin_type = request.margin_type
         match.match_end_time = request.match_end_time
-        match.status = "completed"
+        match.status = "done"
         match.updated_at = datetime.now(timezone.utc)
         # Debug logging to ensure margin_type is received and set correctly
         logger.info(f"Finish request.margin_type={request.margin_type}")
@@ -993,7 +990,7 @@ async def finish_match(match_id: int, request: MatchFinishRequest, db: Session =
         db.commit()
         db.refresh(match)
         
-        logger.info(f"✅ Match {match_id} finished successfully. Status: completed")
+        logger.info(f"✅ Match {match_id} finished successfully. Status: done")
         
         return {
             "success": True,

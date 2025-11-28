@@ -185,7 +185,7 @@ class MatchStatusUpdate(BaseModel):
     @field_validator('status')
     @classmethod
     def validate_status(cls, v):
-        valid_statuses = ['scheduled', 'live', 'completed']
+        valid_statuses = ['scheduled', 'live', 'done']
         if v not in valid_statuses:
             raise ValueError(f"Status must be one of: {', '.join(valid_statuses)}")
         return v
