@@ -411,9 +411,11 @@ class MatchResponse(BaseModel):
     actual_start_time: Optional[datetime] = None
     match_end_time: Optional[datetime] = None
     
-    # Innings scores (first innings only)
-    team1_first_innings_score: Optional[int] = None
-    team2_first_innings_score: Optional[int] = None
+    # Innings scores - Separate runs and wickets (first innings only)
+    team1_first_innings_runs: Optional[int] = None
+    team1_first_innings_wickets: Optional[int] = None
+    team2_first_innings_runs: Optional[int] = None
+    team2_first_innings_wickets: Optional[int] = None
     
     # Match score URL
     match_score_url: Optional[str] = None
@@ -440,8 +442,10 @@ class MatchResponse(BaseModel):
                 "scheduled_start_time": "2025-11-27T10:00:00",
                 "actual_start_time": "2025-11-27T10:15:00",
                 "match_end_time": "2025-11-27T13:45:00",
-                "team1_first_innings_score": 165,
-                "team2_first_innings_score": 152,
+                "team1_first_innings_runs": 165,
+                "team1_first_innings_wickets": 8,
+                "team2_first_innings_runs": 152,
+                "team2_first_innings_wickets": 5,
                 "result": {
                     "winner": "Mumbai Kings",
                     "margin": 45,
