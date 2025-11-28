@@ -52,7 +52,7 @@ def get_team_by_name(db: Session, team_name: str) -> Team:
 
 
 def match_to_response(match: Match, db: Session = None) -> dict:
-    """Convert Match ORM object to response dict with team names - first innings only"""
+    """Convert Match ORM object to response dict with team names - matches MatchResponse schema exactly"""
     try:
         # Get team names
         team1_name = "Unknown"
@@ -64,7 +64,7 @@ def match_to_response(match: Match, db: Session = None) -> dict:
             team1_name = team1.team_name if team1 else "Unknown"
             team2_name = team2.team_name if team2 else "Unknown"
         
-        # Build basic match response with runs and wickets
+        # Build basic match response - must match MatchResponse schema exactly
         response = {
             "id": match.id,
             "round": match.round,
@@ -78,12 +78,10 @@ def match_to_response(match: Match, db: Session = None) -> dict:
             "scheduled_start_time": match.scheduled_start_time,
             "actual_start_time": match.actual_start_time,
             "match_end_time": match.match_end_time,
-            "team1_runs": match.team1_runs,
-            "team1_wickets": match.team1_wickets,
-            "team2_runs": match.team2_runs,
-            "team2_wickets": match.team2_wickets,
-            "team1_first_innings_score": match.team1_first_innings_score,  # Legacy field
-            "team2_first_innings_score": match.team2_first_innings_score,  # Legacy field
+            "team1_first_innings_runs": match.team1_first_innings_runs,
+            "team1_first_innings_wickets": match.team1_first_innings_wickets,
+            "team2_first_innings_runs": match.team2_first_innings_runs,
+            "team2_first_innings_wickets": match.team2_first_innings_wickets,
             "match_score_url": match.match_score_url,
             "result": None,
             "created_at": match.created_at,
@@ -126,10 +124,11 @@ def match_to_response(match: Match, db: Session = None) -> dict:
             "scheduled_start_time": match.scheduled_start_time,
             "actual_start_time": match.actual_start_time,
             "match_end_time": match.match_end_time,
-            "team1_runs": match.team1_runs,
-            "team1_wickets": match.team1_wickets,
-            "team2_runs": match.team2_runs,
-            "team2_wickets": match.team2_wickets,
+            "team1_first_innings_runs": None,
+            "team1_first_innings_wickets": None,
+            "team2_first_innings_runs": None,
+            "team2_first_innings_wickets": None,
+            "match_score_url": None,
             "result": None,
             "created_at": match.created_at,
             "updated_at": match.updated_at
@@ -815,13 +814,13 @@ async def update_first_innings_score(match_id: int, request: FirstInningsScoreRe
         
         # Update correct team's runs and wickets
         if batting_team.id == match.team1_id:
-            match.team1_runs = request.runs
-            match.team1_wickets = request.wickets
+            match.team1_first_innings_runs = request.runs
+            match.team1_first_innings_wickets = request.wickets
             # Backward compatibility: also set old score field
             match.team1_first_innings_score = request.runs
         else:
-            match.team2_runs = request.runs
-            match.team2_wickets = request.wickets
+            match.team2_first_innings_runs = request.runs
+            match.team2_first_innings_wickets = request.wickets
             # Backward compatibility: also set old score field
             match.team2_first_innings_score = request.runs
         
@@ -888,7 +887,7 @@ async def update_second_innings_score(match_id: int, request: SecondInningsScore
             )
         
         # Validate first innings score exists
-        if match.team1_runs is None and match.team2_runs is None:
+        if match.team1_first_innings_runs is None and match.team2_first_innings_runs is None:
             raise HTTPException(
                 status_code=400,
                 detail="Cannot update second innings: First innings score not recorded yet"
@@ -914,13 +913,13 @@ async def update_second_innings_score(match_id: int, request: SecondInningsScore
         
         # Update correct team's runs and wickets
         if batting_team.id == match.team1_id:
-            match.team1_runs = request.runs
-            match.team1_wickets = request.wickets
+            match.team1_first_innings_runs = request.runs
+            match.team1_first_innings_wickets = request.wickets
             # Backward compatibility: also set old score field
             match.team1_second_innings_score = request.runs
         else:
-            match.team2_runs = request.runs
-            match.team2_wickets = request.wickets
+            match.team2_first_innings_runs = request.runs
+            match.team2_first_innings_wickets = request.wickets
             # Backward compatibility: also set old score field
             match.team2_second_innings_score = request.runs
         
@@ -986,11 +985,12 @@ async def finish_match(match_id: int, request: MatchFinishRequest, db: Session =
                         f"Match must be started and scores recorded first!"
             )
         
-        # Validate both innings scores exist
-        if match.team1_first_innings_score is None or match.team2_first_innings_score is None:
+        # Validate both innings scores exist (runs and wickets)
+        if (match.team1_first_innings_runs is None or match.team1_first_innings_wickets is None or
+            match.team2_first_innings_runs is None or match.team2_first_innings_wickets is None):
             raise HTTPException(
                 status_code=400,
-                detail="Cannot finish match: Both innings scores must be recorded first"
+                detail="Cannot finish match: Both teams' runs and wickets must be recorded first"
             )
         
         # Get winner team
