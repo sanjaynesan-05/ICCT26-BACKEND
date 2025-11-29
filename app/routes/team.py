@@ -211,8 +211,9 @@ async def get_team_details(
                     "email": team.vice_captain_email,
                     "whatsapp": team.vice_captain_whatsapp,
                 },
-                "pastor_letter": team.pastor_letter,        # Base64 image
-                "payment_receipt": team.payment_receipt,    # Base64 image
+                "pastor_letter": team.pastor_letter,        # Cloudinary URL
+                "payment_receipt": team.payment_receipt,    # Cloudinary URL
+                "group_photo": team.group_photo,            # ✅ FIXED: Cloudinary URL or null
                 "registration_date": team.registration_date.isoformat() if team.registration_date else None,
             },
             "players": [
@@ -220,8 +221,8 @@ async def get_team_details(
                     "player_id": p.player_id,
                     "name": p.name,
                     "role": p.role,
-                    "aadhar_file": p.aadhar_file,              # Base64 PDF
-                    "subscription_file": p.subscription_file,  # Base64 PDF
+                    "aadhar_file": p.aadhar_file,              # Cloudinary URL
+                    "subscription_file": p.subscription_file,  # Cloudinary URL
                 } for p in players
             ]
         }
@@ -259,6 +260,9 @@ async def list_all_teams(
                     "team_name": t.team_name,
                     "church_name": t.church_name,
                     "captain_name": t.captain_name,
+                    "pastor_letter": t.pastor_letter,         # ✅ FIXED: Added
+                    "payment_receipt": t.payment_receipt,     # ✅ FIXED: Added
+                    "group_photo": t.group_photo,             # ✅ FIXED: Added
                     "registration_date": t.registration_date.isoformat() if t.registration_date else None,
                 } for t in teams
             ]
