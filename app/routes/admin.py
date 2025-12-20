@@ -76,7 +76,10 @@ async def get_team_details(team_id: str, db: AsyncSession = Depends(get_db_async
 
         if not team_data:
             logger.warning(f"❌ Team not found: {team_id}")
-            raise HTTPException(status_code=404, detail="Team not found")
+            return JSONResponse(
+                status_code=404,
+                content={"detail": "Team not found"}
+            )
 
         # Clean team-level file fields
         if "team" in team_data:
@@ -96,11 +99,14 @@ async def get_team_details(team_id: str, db: AsyncSession = Depends(get_db_async
         logger.info(f"✅ Successfully fetched details for team: {team_id}")
         return JSONResponse(content={"success": True, "data": team_data})
 
-    except HTTPException:
+    except JSONResponse:
         raise
     except Exception as e:
         logger.exception(f"❌ Error fetching team details: {str(e)}")
-        raise HTTPException(status_code=500, detail="Internal Server Error")
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Internal Server Error"}
+        )
 
 
 @router.get("/players/{player_id}")
@@ -126,7 +132,10 @@ async def get_player_details(player_id: int, db: AsyncSession = Depends(get_db_a
 
         if not player_data:
             logger.warning(f"❌ Player not found: {player_id}")
-            raise HTTPException(status_code=404, detail="Player not found")
+            return JSONResponse(
+                status_code=404,
+                content={"detail": "Player not found"}
+            )
 
         # Clean player file fields
         player_data = clean_file_fields(
@@ -137,8 +146,97 @@ async def get_player_details(player_id: int, db: AsyncSession = Depends(get_db_a
         logger.info(f"✅ Successfully fetched player details for ID: {player_id}")
         return JSONResponse(content={"success": True, "data": player_data})
 
-    except HTTPException:
+    except JSONResponse:
         raise
     except Exception as e:
         logger.exception(f"❌ Error fetching player details: {str(e)}")
-        raise HTTPException(status_code=500, detail="Internal Server Error")
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Internal Server Error"}
+        )
+
+
+@router.post("/payment/approve/{team_id}")
+async def approve_payment(team_id: str, db: AsyncSession = Depends(get_db_async)):
+    """
+    Admin endpoint to approve a team's payment (change status from PENDING_PAYMENT to APPROVED).
+    
+    Parameters:
+    - team_id: The unique team identifier
+    
+    Returns:
+    - Updated team data with status set to APPROVED
+    """
+    logger.info(f"POST /admin/payment/approve/{team_id} - Approving payment...")
+    try:
+        team_data = await DatabaseService.get_team_details(db, team_id)
+        
+        if not team_data:
+            logger.warning(f"❌ Team not found: {team_id}")
+            return JSONResponse(
+                status_code=404,
+                content={"detail": "Team not found"}
+            )
+        
+        # Update status to APPROVED
+        result = await DatabaseService.update_team_status(db, team_id, "APPROVED")
+        
+        if result:
+            logger.info(f"✅ Payment approved for team: {team_id}")
+            return JSONResponse(content={"success": True, "message": "Payment approved", "data": result})
+        else:
+            logger.error(f"❌ Failed to approve payment for team: {team_id}")
+            return JSONResponse(
+                status_code=500,
+                content={"detail": "Failed to update payment status"}
+            )
+        
+    except Exception as e:
+        logger.exception(f"❌ Error approving payment: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Internal Server Error"}
+        )
+
+
+@router.post("/payment/reject/{team_id}")
+async def reject_payment(team_id: str, db: AsyncSession = Depends(get_db_async)):
+    """
+    Admin endpoint to reject a team's payment (change status from PENDING_PAYMENT to REJECTED).
+    
+    Parameters:
+    - team_id: The unique team identifier
+    
+    Returns:
+    - Updated team data with status set to REJECTED
+    """
+    logger.info(f"POST /admin/payment/reject/{team_id} - Rejecting payment...")
+    try:
+        team_data = await DatabaseService.get_team_details(db, team_id)
+        
+        if not team_data:
+            logger.warning(f"❌ Team not found: {team_id}")
+            return JSONResponse(
+                status_code=404,
+                content={"detail": "Team not found"}
+            )
+        
+        # Update status to REJECTED
+        result = await DatabaseService.update_team_status(db, team_id, "REJECTED")
+        
+        if result:
+            logger.info(f"✅ Payment rejected for team: {team_id}")
+            return JSONResponse(content={"success": True, "message": "Payment rejected", "data": result})
+        else:
+            logger.error(f"❌ Failed to reject payment for team: {team_id}")
+            return JSONResponse(
+                status_code=500,
+                content={"detail": "Failed to update payment status"}
+            )
+        
+    except Exception as e:
+        logger.exception(f"❌ Error rejecting payment: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Internal Server Error"}
+        )

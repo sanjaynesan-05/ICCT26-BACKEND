@@ -23,6 +23,7 @@ import sys
 import os
 import json
 from datetime import datetime
+from starlette.testclient import TestClient
 from main import app
 
 # Configuration
@@ -351,44 +352,44 @@ class TestAdminEndpointsSync:
         """Test: Health endpoint before admin tests"""
         print("\n[SANITY] Health check")
         
-        with httpx.Client() as client:
-            response = client.get(f"{BASE_URL}/health")
-            assert response.status_code == 200
-            
-            print("✅ Health check passed")
-            return True
+        client = TestClient(app)
+        response = client.get("/health")
+        assert response.status_code == 200
+        
+        print("✅ Health check passed")
+        return True
 
     def test_admin_teams_sync(self):
         """Test: GET /admin/teams (sync)"""
         print("\n[SYNC] GET /admin/teams")
         
-        with httpx.Client() as client:
-            response = client.get(f"{ADMIN_BASE}/teams")
-            
-            if response.status_code == 200:
-                data = response.json()
-                teams = data.get("data", [])
-                print(f"✅ Retrieved {len(teams)} teams")
-                return True
-            else:
-                print(f"⚠️  Got status {response.status_code}")
-                return response.status_code == 200
+        client = TestClient(app)
+        response = client.get(f"/admin/teams")
+        
+        if response.status_code == 200:
+            data = response.json()
+            teams = data.get("data", [])
+            print(f"✅ Retrieved {len(teams)} teams")
+            return True
+        else:
+            print(f"⚠️  Got status {response.status_code}")
+            return response.status_code == 200
 
     def test_admin_teams_response_sync(self):
         """Test: Validate teams response format"""
         print("\n[SYNC] Teams response format")
         
-        with httpx.Client() as client:
-            response = client.get(f"{ADMIN_BASE}/teams")
-            assert response.status_code == 200
-            
-            data = response.json()
-            assert data["success"] is True
-            teams = data.get("data", [])
-            assert isinstance(teams, list)
-            
-            print("✅ Response format valid")
-            return True
+        client = TestClient(app)
+        response = client.get(f"/admin/teams")
+        assert response.status_code == 200
+        
+        data = response.json()
+        assert data["success"] is True
+        teams = data.get("data", [])
+        assert isinstance(teams, list)
+        
+        print("✅ Response format valid")
+        return True
 
 
 def run_all_tests():

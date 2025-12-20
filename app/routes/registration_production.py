@@ -356,10 +356,14 @@ async def register_team_production_hardened(
                 db.add(player)
                 player_count += 1
 
+            # Set payment status (Two-stage registration)
+            team.status = "PENDING_PAYMENT"
+            
             # finalize transaction
             await db.commit()
             StructuredLogger.log_db_operation(request_id, "insert", "success", team_id)
             logger.info(f"[{request_id}] ✅ Database records created (team + {player_count} players)")
+            logger.info(f"[{request_id}] 💳 Team status set to: PENDING_PAYMENT (awaiting payment)")
 
         except IntegrityError as e:
             await db.rollback()
@@ -393,8 +397,9 @@ async def register_team_production_hardened(
                     "success": True,
                     "team_id": team_id,
                     "team_name": validated_team_name,
-                    "message": "Team registered successfully",
-                    "player_count": player_count
+                    "message": "Registration completed. Please complete payment to proceed.",
+                    "player_count": player_count,
+                    "status": "PENDING_PAYMENT"
                 })
                 await store_idempotency_key(db, idempotency_key, payload)
             except Exception as e:
@@ -410,8 +415,10 @@ async def register_team_production_hardened(
                 "success": True,
                 "team_id": team_id,
                 "team_name": validated_team_name,
-                "message": "Team registered successfully",
-                "player_count": player_count
+                "message": "Registration completed. Please complete payment to proceed.",
+                "player_count": player_count,
+                "status": "PENDING_PAYMENT",
+                "next_step": "Complete payment via UPI to confirm your registration."
             }
         )
 

@@ -404,7 +404,36 @@ class DatabaseService:
             players_data = result.mappings().all()
             
             logger.info(f"Found team with {len(players_data)} players")
+            
+            # Flatten response structure - put team fields at root level with team data nested
             return {
+                "teamId": team_data["team_id"],
+                "teamName": team_data["team_name"],
+                "churchName": team_data["church_name"],
+                "captain": {
+                    "name": team_data["captain_name"],
+                    "phone": team_data["captain_phone"],
+                    "email": team_data["captain_email"]
+                } if team_data["captain_name"] else None,
+                "viceCaptain": {
+                    "name": team_data["vice_captain_name"],
+                    "phone": team_data["vice_captain_phone"],
+                    "email": team_data["vice_captain_email"]
+                } if team_data["vice_captain_name"] else None,
+                "paymentReceipt": team_data["payment_receipt"],
+                "pastorLetter": team_data["pastor_letter"],
+                "groupPhoto": team_data["group_photo"],
+                "registrationDate": str(team_data["created_at"]) if team_data["created_at"] else None,
+                "players": [
+                    {
+                        "playerId": p["player_id"],
+                        "name": p["name"],
+                        "role": p["role"],
+                        "aadharFile": p["aadhar_file"],
+                        "subscriptionFile": p["subscription_file"]
+                    } for p in players_data
+                ],
+                # Also include nested team object for backward compatibility
                 "team": {
                     "teamId": team_data["team_id"],
                     "teamName": team_data["team_name"],
@@ -423,16 +452,7 @@ class DatabaseService:
                     "pastorLetter": team_data["pastor_letter"],
                     "groupPhoto": team_data["group_photo"],
                     "registrationDate": str(team_data["created_at"]) if team_data["created_at"] else None
-                },
-                "players": [
-                    {
-                        "playerId": p["player_id"],
-                        "name": p["name"],
-                        "role": p["role"],
-                        "aadharFile": p["aadhar_file"],
-                        "subscriptionFile": p["subscription_file"]
-                    } for p in players_data
-                ]
+                }
             }
             
         except Exception as e:
@@ -477,6 +497,53 @@ class DatabaseService:
             
         except Exception as e:
             logger.error(f"Error fetching player details: {str(e)}")
+            raise
+
+    @staticmethod
+    async def update_team_status(db: AsyncSession, team_id: str, status: str) -> Dict[str, Any]:
+        """Update team status to APPROVED, REJECTED, or other statuses"""
+        
+        logger.info(f"Updating status for team_id: {team_id} to {status}")
+        try:
+            # Update the team's status
+            update_query = text("""
+                UPDATE teams
+                SET status = :status, updated_at = CURRENT_TIMESTAMP
+                WHERE team_id = :team_id
+            """)
+            
+            await db.execute(update_query, {"status": status, "team_id": team_id})
+            await db.commit()
+            
+            # Return updated team details
+            team_query = text("""
+                SELECT id, team_id, team_name, church_name, payment_receipt, pastor_letter, group_photo, created_at,
+                       captain_name, captain_phone, captain_email,
+                       vice_captain_name, vice_captain_phone, vice_captain_email,
+                       status
+                FROM teams
+                WHERE team_id = :team_id
+            """)
+            
+            result = await db.execute(team_query, {"team_id": team_id})
+            team_data = result.mappings().first()
+            
+            if team_data:
+                logger.info(f"✅ Status updated to {status} for team: {team_id}")
+                return {
+                    "teamId": team_data["team_id"],
+                    "teamName": team_data["team_name"],
+                    "churchName": team_data["church_name"],
+                    "status": team_data["status"],
+                    "registrationDate": str(team_data["created_at"]) if team_data["created_at"] else None
+                }
+            else:
+                logger.error(f"❌ Team not found after update: {team_id}")
+                return None
+            
+        except Exception as e:
+            await db.rollback()
+            logger.error(f"Error updating status: {str(e)}")
             raise
 
     @staticmethod

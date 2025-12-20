@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: icct26-backend
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.9
+      - key: DATABASE_URL
+        fromDatabase:
+          name: icct26-db
+          property: connectionString
+      - key: ENVIRONMENT
+        value: production
+      - key: DEBUG
+        value: false
+    healthCheckPath: /health
+    autoDeploy: true
+
+databases:
+  - name: icct26-db
+    plan: free
+    databaseName: icct26_production
+    user: icct26_user

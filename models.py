@@ -42,6 +42,16 @@ class Team(Base):
     payment_receipt = Column(Text, nullable=True)
     pastor_letter = Column(Text, nullable=True)
     group_photo = Column(Text, nullable=True)  # Team group photo (Base64)
+    payment_screenshot = Column(Text, nullable=True)  # Payment proof screenshot (Cloudinary URL)
+
+    # Payment & Registration Status
+    status = Column(String(50), nullable=False, default="PENDING_PAYMENT", index=True)  # Registration status state machine
+    payment_date = Column(DateTime, nullable=True, index=True)  # When payment screenshot was uploaded
+    approval_date = Column(DateTime, nullable=True)  # When admin approved registration
+    rejection_date = Column(DateTime, nullable=True)  # When admin rejected registration
+    rejection_reason = Column(Text, nullable=True)  # Reason for rejection if rejected
+    approved_by = Column(String(100), nullable=True)  # Admin who approved
+    rejected_by = Column(String(100), nullable=True)  # Admin who rejected
 
     # Timestamps with server defaults
     registration_date = Column(DateTime, nullable=False, default=func.now(), server_default=func.now())
