@@ -26,7 +26,8 @@ async def migrate():
     logger.info("🔧 CRITICAL MIGRATION: Adding UUID DEFAULT to teams.id")
     logger.info("="*70)
     
-    async with async_engine.begin() as conn:
+    # Use autocommit mode - changes are committed immediately
+    async with async_engine.connect() as conn:
         
         # Check current state
         logger.info("\n📋 Checking current teams.id column...")
@@ -48,7 +49,8 @@ async def migrate():
                 ALTER TABLE teams 
                 ALTER COLUMN id SET DEFAULT gen_random_uuid();
             """))
-            logger.info("✅ DEFAULT added successfully")
+            await conn.commit()  # CRITICAL: Commit the change
+            logger.info("✅ DEFAULT added successfully and COMMITTED")
         except Exception as e:
             logger.error(f"❌ Migration failed: {e}")
             raise
