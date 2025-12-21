@@ -64,7 +64,7 @@ async def generate_next_team_id(db: AsyncSession, prefix: str = "ICCT") -> str:
     """
     Generate next sequential team ID with race condition protection.
     
-    Uses SELECT FOR UPDATE to lock the row during transaction.
+    Uses raw SQL with database-level locking.
     Guarantees no duplicate IDs even under high concurrency.
     
     Args:
@@ -82,32 +82,36 @@ async def generate_next_team_id(db: AsyncSession, prefix: str = "ICCT") -> str:
     
     while retry_count < max_retries:
         try:
-            # Start explicit transaction
-            async with db.begin_nested():
-                # Lock the sequence row for update (prevents concurrent modifications)
-                stmt = (
-                    select(TeamSequence)
-                    .where(TeamSequence.id == 1)
-                    .with_for_update()  # Critical: locks row until commit
-                )
+            async with db.begin():
+                # Ensure table exists with initial row
+                await db.execute(text("""
+                    CREATE TABLE IF NOT EXISTS team_sequence (
+                        id INTEGER PRIMARY KEY DEFAULT 1,
+                        last_number INTEGER DEFAULT 0
+                    )
+                """))
                 
-                result = await db.execute(stmt)
-                sequence = result.scalar_one_or_none()
+                # Ensure initial row exists
+                await db.execute(text("""
+                    INSERT INTO team_sequence (id, last_number)
+                    VALUES (1, 0)
+                    ON CONFLICT (id) DO NOTHING
+                """))
                 
-                if not sequence:
-                    # Sequence not initialized, create it
-                    sequence = TeamSequence(id=1, last_number=0, prefix=prefix)
-                    db.add(sequence)
-                    await db.flush()
+                # Lock and increment - database-level atomic operation
+                result = await db.execute(text("""
+                    UPDATE team_sequence 
+                    SET last_number = last_number + 1 
+                    WHERE id = 1 
+                    RETURNING last_number
+                """))
                 
-                # Increment the sequence number
-                next_number = sequence.last_number + 1
-                sequence.last_number = next_number
+                row = result.fetchone()
+                if not row:
+                    raise Exception("Failed to update sequence")
                 
-                # Format as ICCT-001, ICCT-002, etc.
+                next_number = row[0]
                 team_id = f"{prefix}-{next_number:03d}"
-                
-                await db.flush()
                 
                 logger.info(f"✅ Generated team ID: {team_id}")
                 return team_id
@@ -117,8 +121,8 @@ async def generate_next_team_id(db: AsyncSession, prefix: str = "ICCT") -> str:
             logger.warning(f"⚠️ Team ID generation attempt {retry_count} failed: {e}")
             
             if retry_count >= max_retries:
-                logger.error(f"❌ Team ID generation failed after {max_retries} retries")
-                raise Exception(f"Failed to generate team ID: {str(e)}")
+                logger.error(f"❌ Team ID generation failed after {max_retries} retries: {e}")
+                raise Exception(f"Failed to generate team ID after {max_retries} retries: {str(e)}")
             
             # Small delay before retry
             import asyncio
