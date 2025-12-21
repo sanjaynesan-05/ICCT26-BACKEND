@@ -43,15 +43,6 @@ logger.info(
     extra={"environment": ENVIRONMENT}
 )
 
-# Initialize Cloudinary
-try:
-    import cloudinary_config
-    cloudinary_config.verify_cloudinary_config()
-    logger.info("Cloudinary initialized successfully")
-except Exception as e:
-    logger.warning(f"Cloudinary initialization failed: {str(e)}")
-    logger.warning("File uploads will use Base64 fallback mode")
-
 # -----------------------
 # FastAPI app initialization
 # -----------------------
@@ -212,6 +203,12 @@ async def keep_neon_awake():
 async def startup_event():
     """Initialize async metadata, ensure sync tables exist, warm up Neon DB, and run production health checks"""
     try:
+        # Initialize Cloudinary
+        if settings.init_cloudinary():
+            logger.info("✅ Cloudinary initialized successfully")
+        else:
+            logger.warning("⚠️  Cloudinary disabled — falling back to Base64 mode")
+        
         # Production health check: validate database connectivity
         logger.info("🏥 Running production database health check...")
         try:

@@ -35,6 +35,47 @@ class Settings(BaseSettings):
     CLOUDINARY_API_KEY: str = Field(default="", description="Cloudinary API key")
     CLOUDINARY_API_SECRET: str = Field(default="", description="Cloudinary API secret")
     
+    @property
+    def CLOUDINARY_ENABLED(self) -> bool:
+        """Check if Cloudinary is properly configured"""
+        return bool(
+            self.CLOUDINARY_CLOUD_NAME and 
+            self.CLOUDINARY_CLOUD_NAME != "demo" and
+            self.CLOUDINARY_API_KEY and 
+            self.CLOUDINARY_API_SECRET
+        )
+    
+    def init_cloudinary(self) -> bool:
+        """
+        Initialize Cloudinary configuration at application startup.
+        Returns True if successful, False otherwise.
+        """
+        if not self.CLOUDINARY_ENABLED:
+            return False
+        
+        try:
+            import cloudinary
+            import cloudinary.uploader
+            import cloudinary.api
+            
+            cloudinary.config(
+                cloud_name=self.CLOUDINARY_CLOUD_NAME,
+                api_key=self.CLOUDINARY_API_KEY,
+                api_secret=self.CLOUDINARY_API_SECRET,
+                secure=True
+            )
+            
+            # Verify configuration
+            config = cloudinary.config()
+            if not all([config.cloud_name, config.api_key, config.api_secret]):
+                return False
+            
+            return True
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"Cloudinary initialization failed: {e}")
+            return False
+    
     # ============= JWT CONFIGURATION =============
     JWT_SECRET_KEY: str = Field(default="change-me-in-production", description="JWT secret key")
     JWT_ALGORITHM: str = Field(default="HS256", description="JWT algorithm")

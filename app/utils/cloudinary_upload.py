@@ -20,24 +20,8 @@ from concurrent.futures import ThreadPoolExecutor
 
 logger = logging.getLogger(__name__)
 
-# Initialize Cloudinary from environment variables
-cloudinary.config(
-    cloud_name=os.getenv('CLOUDINARY_CLOUD_NAME'),
-    api_key=os.getenv('CLOUDINARY_API_KEY'),
-    api_secret=os.getenv('CLOUDINARY_API_SECRET'),
-    secure=True
-)
-
 # Thread pool for running sync Cloudinary operations asynchronously
 executor = ThreadPoolExecutor(max_workers=4)
-
-
-def verify_cloudinary_config():
-    """Verify that Cloudinary is properly configured"""
-    config = cloudinary.config()
-    if not all([config.cloud_name, config.api_key, config.api_secret]):
-        raise ValueError("Cloudinary credentials not properly configured. Check environment variables.")
-    return True
 
 
 class CloudinaryUploader:
