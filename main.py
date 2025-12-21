@@ -226,20 +226,19 @@ async def startup_event():
         logger.info("🔧 Initializing production hardening tables...")
         try:
             async with async_engine.begin() as conn:
-                # Create team_sequence table for race-safe IDs
+                # Create team_sequence table for race-safe IDs with PostgreSQL syntax
                 await conn.execute(text("""
                     CREATE TABLE IF NOT EXISTS team_sequence (
-                        id INTEGER PRIMARY KEY DEFAULT 1,
-                        last_number INTEGER DEFAULT 0,
-                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                        id INTEGER PRIMARY KEY,
+                        last_number INTEGER NOT NULL DEFAULT 0
                     )
                 """))
                 
-                # Initialize sequence with starting value
+                # Ensure initial row exists (PostgreSQL ON CONFLICT syntax)
                 await conn.execute(text("""
                     INSERT INTO team_sequence (id, last_number)
                     VALUES (1, 0)
-                    ON CONFLICT (id) DO NOTHING
+                    ON CONFLICT (id) DO UPDATE SET last_number = EXCLUDED.last_number
                 """))
                 
                 # Create idempotency_keys table for duplicate prevention
