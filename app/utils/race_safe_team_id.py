@@ -68,7 +68,7 @@ async def generate_next_team_id(db: AsyncSession, prefix: str = "ICCT") -> str:
     Guarantees no duplicate IDs even under high concurrency.
     
     Args:
-        db: Async database session
+        db: Async database session (must not be in a transaction)
         prefix: Team ID prefix (default: "ICCT")
     
     Returns:
@@ -82,39 +82,38 @@ async def generate_next_team_id(db: AsyncSession, prefix: str = "ICCT") -> str:
     
     while retry_count < max_retries:
         try:
-            async with db.begin():
-                # Ensure table exists with initial row
-                await db.execute(text("""
-                    CREATE TABLE IF NOT EXISTS team_sequence (
-                        id INTEGER PRIMARY KEY,
-                        last_number INTEGER NOT NULL DEFAULT 0
-                    )
-                """))
-                
-                # Ensure initial row exists
-                await db.execute(text("""
-                    INSERT INTO team_sequence (id, last_number)
-                    VALUES (1, 0)
-                    ON CONFLICT (id) DO NOTHING
-                """))
-                
-                # Lock and increment - database-level atomic operation
-                result = await db.execute(text("""
-                    UPDATE team_sequence 
-                    SET last_number = last_number + 1 
-                    WHERE id = 1 
-                    RETURNING last_number
-                """))
-                
-                row = result.fetchone()
-                if not row:
-                    raise Exception("Failed to update sequence")
-                
-                next_number = row[0]
-                team_id = f"{prefix}-{next_number:03d}"
-                
-                logger.info(f"✅ Generated team ID: {team_id}")
-                return team_id
+            # Ensure table exists with initial row
+            await db.execute(text("""
+                CREATE TABLE IF NOT EXISTS team_sequence (
+                    id INTEGER PRIMARY KEY,
+                    last_number INTEGER NOT NULL DEFAULT 0
+                )
+            """))
+            
+            # Ensure initial row exists
+            await db.execute(text("""
+                INSERT INTO team_sequence (id, last_number)
+                VALUES (1, 0)
+                ON CONFLICT (id) DO NOTHING
+            """))
+            
+            # Lock and increment - database-level atomic operation
+            result = await db.execute(text("""
+                UPDATE team_sequence 
+                SET last_number = last_number + 1 
+                WHERE id = 1 
+                RETURNING last_number
+            """))
+            
+            row = result.fetchone()
+            if not row:
+                raise Exception("Failed to update sequence")
+            
+            next_number = row[0]
+            team_id = f"{prefix}-{next_number:03d}"
+            
+            logger.info(f"✅ Generated team ID: {team_id}")
+            return team_id
                 
         except Exception as e:
             retry_count += 1
