@@ -86,8 +86,8 @@ async def generate_next_team_id(db: AsyncSession, prefix: str = "ICCT") -> str:
                 # Ensure table exists with initial row
                 await db.execute(text("""
                     CREATE TABLE IF NOT EXISTS team_sequence (
-                        id INTEGER PRIMARY KEY DEFAULT 1,
-                        last_number INTEGER DEFAULT 0
+                        id INTEGER PRIMARY KEY,
+                        last_number INTEGER NOT NULL DEFAULT 0
                     )
                 """))
                 
