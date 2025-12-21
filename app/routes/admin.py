@@ -2,30 +2,42 @@
 Admin routes - Admin panel endpoints for team and player management
 """
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi.responses import JSONResponse
+from typing import Optional
 import logging
 
 from database import get_db_async
 from app.services import DatabaseService
 from app.utils.file_utils import fix_file_fields, fix_player_fields, clean_file_fields
 from app.utils.file_validation import sanitize_cloudinary_url
+from app.utils.cloudinary_upload import cloudinary_uploader
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
 @router.get("/teams")
-async def get_all_teams(db: AsyncSession = Depends(get_db_async)):
+async def get_all_teams(
+    status: Optional[str] = Query(None, description="Filter by registration status: pending, confirmed, rejected"),
+    db: AsyncSession = Depends(get_db_async)
+):
     """
     Get all registered teams with player count.
+    
+    Query Parameters:
+    - status (optional): Filter teams by registration status
+      - 'pending': Teams waiting for admin confirmation
+      - 'confirmed': Teams that are approved
+      - 'rejected': Teams that were rejected
+      - If not provided, returns all teams
     
     Returns a list of all teams with essential information:
     - Team ID, Name, Church Name
     - Captain and Vice-Captain details
     - Player count
-    - Registration date
+    - Registration date and status
     - Payment receipt, pastor letter, and group photo (as valid Cloudinary URLs or empty strings)
     
     File Fields Guarantee:
@@ -33,9 +45,14 @@ async def get_all_teams(db: AsyncSession = Depends(get_db_async)):
     - No undefined, null, Base64, or malformed values
     - Admin panel images load smoothly
     """
-    logger.info("GET /admin/teams - Fetching all teams...")
+    logger.info(f"GET /admin/teams - Fetching teams (status filter: {status})...")
     try:
         teams = await DatabaseService.get_all_teams(db)
+        
+        # Filter by status if provided
+        if status:
+            teams = [team for team in teams if team.get("registrationStatus") == status]
+            logger.info(f"Filtered to {len(teams)} teams with status: {status}")
         
         # Clean file fields: ensure they are valid Cloudinary URLs or empty strings
         for team in teams:
@@ -141,4 +158,200 @@ async def get_player_details(player_id: int, db: AsyncSession = Depends(get_db_a
         raise
     except Exception as e:
         logger.exception(f"❌ Error fetching player details: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal Server Error")
+
+@router.put("/teams/{team_id}/confirm")
+async def confirm_team_registration(
+    team_id: str,
+    db: AsyncSession = Depends(get_db_async)
+):
+    """
+    Confirm/approve a team's registration (CLOUD-FIRST STRATEGY).
+    
+    1. Move files from /pending/{team_id}/ to /confirmed/{team_id}/
+    2. Rename files with Team ID in filename (ICCT26-dda9_payment_receipt.pdf)
+    3. Update database with new Cloudinary URLs
+    4. Change registration_status to 'confirmed'
+    5. Send confirmation email with Team ID
+    
+    Parameters:
+    - team_id: The unique team identifier
+    
+    Returns:
+    - Success message with updated team status and email notification status
+    """
+    logger.info(f"PUT /admin/teams/{team_id}/confirm - Confirming team registration...")
+    try:
+        # Step 1: Get team from database
+        team = await DatabaseService.get_team(db, team_id)
+        if not team:
+            logger.warning(f"❌ Team not found: {team_id}")
+            raise HTTPException(status_code=404, detail="Team not found")
+        
+        # Step 2: Move files from pending to confirmed (with Team ID in filename)
+        logger.info(f"🔄 Moving files from /pending/ to /confirmed/ with Team ID in filename...")
+        confirmed_urls = {}
+        
+        # Move payment_receipt
+        if team.payment_receipt:
+            new_url = await cloudinary_uploader.move_to_confirmed(
+                team_id=team_id,
+                file_field_name="payment_receipt"
+            )
+            if new_url:
+                confirmed_urls["payment_receipt"] = new_url
+                team.payment_receipt = new_url
+        
+        # Move pastor_letter
+        if team.pastor_letter:
+            new_url = await cloudinary_uploader.move_to_confirmed(
+                team_id=team_id,
+                file_field_name="pastor_letter"
+            )
+            if new_url:
+                confirmed_urls["pastor_letter"] = new_url
+                team.pastor_letter = new_url
+        
+        # Move group_photo
+        if team.group_photo:
+            new_url = await cloudinary_uploader.move_to_confirmed(
+                team_id=team_id,
+                file_field_name="group_photo"
+            )
+            if new_url:
+                confirmed_urls["group_photo"] = new_url
+                team.group_photo = new_url
+        
+        logger.info(f"✅ Files moved to confirmed folder: {list(confirmed_urls.keys())}")
+        
+        # Step 3: Update status in database
+        team.registration_status = "confirmed"
+        db.add(team)
+        await db.commit()
+        
+        logger.info(f"✅ Updated {team_id} status to confirmed")
+        
+        # Step 4: Get team details to send email
+        team_data = await DatabaseService.get_team_details(db, team_id)
+        email_status = "not_sent"
+        
+        if team_data and team_data.get('team'):
+            team = team_data['team']
+            captain = team.get('captain', {}) if isinstance(team.get('captain'), dict) else {}
+            vice_captain = team.get('viceCaptain', {}) if isinstance(team.get('viceCaptain'), dict) else {}
+            players = team_data.get('players', [])
+            
+            captain_email = captain.get('email')
+            captain_name = captain.get('name', 'Captain')
+            captain_phone = captain.get('phone', '')
+            team_name = team.get('teamName', 'Unknown')
+            church_name = team.get('churchName', '')
+            vice_captain_name = vice_captain.get('name', '')
+            vice_captain_phone = vice_captain.get('phone', '')
+            vice_captain_email = vice_captain.get('email', '')
+            
+            if captain_email:
+                # Create confirmation email
+                from app.services import EmailService
+                
+                email_html = EmailService.create_admin_approval_email(
+                    team_name=team_name,
+                    captain_name=captain_name,
+                    team_id=team_id,
+                    church_name=church_name,
+                    vice_captain_name=vice_captain_name,
+                    vice_captain_phone=vice_captain_phone,
+                    vice_captain_email=vice_captain_email,
+                    captain_phone=captain_phone,
+                    captain_email=captain_email,
+                    players=players
+                )
+                
+                # Send email asynchronously
+                email_sent = await EmailService.send_email_async_if_available(
+                    to_email=captain_email,
+                    subject=f"✅ Registration Confirmed - {team_name} - Team ID: {team_id}",
+                    body=email_html
+                )
+                
+                email_status = "sent" if email_sent else "failed"
+                
+                if email_sent:
+                    logger.info(f"✅ Confirmation email sent to {captain_email} for team {team_id}")
+                else:
+                    logger.warning(f"⚠️  Failed to send confirmation email to {captain_email}")
+        
+        logger.info(f"✅ Successfully confirmed registration for team: {team_id}")
+        return JSONResponse(content={
+            "success": True,
+            "message": "Team registration confirmed successfully",
+            "team_id": team_id,
+            "registration_status": "confirmed",
+            "email_notification": email_status
+        })
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"❌ Error confirming team registration: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal Server Error")
+
+
+@router.put("/teams/{team_id}/reject")
+async def reject_team_registration(
+    team_id: str,
+    db: AsyncSession = Depends(get_db_async)
+):
+    """
+    Reject a team's registration (CLOUD-FIRST STRATEGY).
+    
+    1. Delete ALL pending files from Cloudinary /pending/{team_id}/
+    2. Update database status to 'rejected'
+    3. Clear file URLs from database
+    4. INSTANT cleanup - no manual deletion needed
+    
+    Parameters:
+    - team_id: The unique team identifier
+    
+    Returns:
+    - Success message with updated team status
+    """
+    logger.info(f"PUT /admin/teams/{team_id}/reject - Rejecting team registration...")
+    try:
+        # Step 1: Delete all pending files from Cloudinary
+        logger.info(f"🗑️ Deleting pending files from Cloudinary...")
+        deleted = await cloudinary_uploader.delete_pending_files(team_id)
+        
+        if deleted:
+            logger.info(f"✅ Deleted all files from /pending/{team_id}/")
+        
+        # Step 2: Update database
+        team = await DatabaseService.get_team(db, team_id)
+        if not team:
+            logger.warning(f"❌ Team not found: {team_id}")
+            raise HTTPException(status_code=404, detail="Team not found")
+        
+        team.registration_status = "rejected"
+        team.payment_receipt = ""  # Clear URLs
+        team.pastor_letter = ""
+        team.group_photo = ""
+        
+        db.add(team)
+        await db.commit()
+        
+        logger.info(f"✅ Successfully rejected registration for team: {team_id}")
+        return JSONResponse(content={
+            "success": True,
+            "message": "Team registration rejected",
+            "team_id": team_id,
+            "registration_status": "rejected",
+            "files_deleted": True,
+            "deletion_status": "instant",
+            "cost_impact": "$0 (files deleted from Cloudinary)"
+        })
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"❌ Error rejecting team registration: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal Server Error")

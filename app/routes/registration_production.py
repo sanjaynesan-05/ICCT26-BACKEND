@@ -27,6 +27,7 @@ from app.utils.validation import (
 )
 from app.utils.idempotency import check_idempotency_key, store_idempotency_key
 from app.utils.cloudinary_reliable import upload_with_retry, CloudinaryUploadError
+from app.utils.cloudinary_upload import cloudinary_uploader
 from app.utils.error_responses import (
     ErrorCode,
     create_error_response,
@@ -81,10 +82,10 @@ async def register_team_production_hardened(
                         status_code=409,
                         content={
                             "success": True,
-                            "team_id": "UNKNOWN",
                             "team_name": "UNKNOWN",
-                            "message": "This request has already been processed",
-                            "player_count": 0
+                            "message": "This request has already been processed. Please wait for admin confirmation.",
+                            "player_count": 0,
+                            "registration_status": "pending"
                         }
                     )
 
@@ -246,32 +247,58 @@ async def register_team_production_hardened(
             return create_error_response(ErrorCode.TEAM_ID_GENERATION_FAILED, "Team id generation failed", {"error": str(e)}, 500)
 
         # -------------------------------
-        # UPLOAD TEAM FILES (Cloudinary)
+        # UPLOAD TEAM FILES TO CLOUDINARY (PENDING FOLDER)
         # -------------------------------
-        logger.info(f"[{request_id}] Uploading team files to Cloudinary...")
+        logger.info(f"[{request_id}] Uploading team files to Cloudinary /pending/{team_id}/...")
         try:
-            pastor_url = await upload_with_retry(pastor_letter, folder=f"ICCT26/pastor_letters/{team_id}")
-            StructuredLogger.log_file_upload(request_id, "pastor_letter", "success", pastor_url)
+            # Upload pastor letter to pending
+            pastor_content = await pastor_letter.read()
+            pastor_url = await cloudinary_uploader.upload_pending_file(
+                file_content=pastor_content,
+                team_id=team_id,
+                file_field_name="pastor_letter",
+                original_filename=pastor_letter.filename
+            )
+            if pastor_url:
+                StructuredLogger.log_file_upload(request_id, "pastor_letter", "success", pastor_url)
+            else:
+                raise CloudinaryUploadError("Pastor letter upload failed")
 
+            # Upload payment receipt to pending (optional)
             receipt_url = None
             if payment_receipt:
                 try:
-                    receipt_url = await upload_with_retry(payment_receipt, folder=f"ICCT26/receipts/{team_id}")
-                    StructuredLogger.log_file_upload(request_id, "payment_receipt", "success", receipt_url)
-                except CloudinaryUploadError as e:
+                    receipt_content = await payment_receipt.read()
+                    receipt_url = await cloudinary_uploader.upload_pending_file(
+                        file_content=receipt_content,
+                        team_id=team_id,
+                        file_field_name="payment_receipt",
+                        original_filename=payment_receipt.filename
+                    )
+                    if receipt_url:
+                        StructuredLogger.log_file_upload(request_id, "payment_receipt", "success", receipt_url)
+                except Exception as e:
                     logger.warning(f"[{request_id}] payment_receipt upload failed (optional): {e}")
                     StructuredLogger.log_file_upload(request_id, "payment_receipt", "failed")
 
+            # Upload group photo to pending (optional)
             photo_url = None
             if group_photo:
                 try:
-                    photo_url = await upload_with_retry(group_photo, folder=f"ICCT26/group_photos/{team_id}")
-                    StructuredLogger.log_file_upload(request_id, "group_photo", "success", photo_url)
-                except CloudinaryUploadError as e:
+                    photo_content = await group_photo.read()
+                    photo_url = await cloudinary_uploader.upload_pending_file(
+                        file_content=photo_content,
+                        team_id=team_id,
+                        file_field_name="group_photo",
+                        original_filename=group_photo.filename
+                    )
+                    if photo_url:
+                        StructuredLogger.log_file_upload(request_id, "group_photo", "success", photo_url)
+                except Exception as e:
                     logger.warning(f"[{request_id}] group_photo upload failed (optional): {e}")
                     StructuredLogger.log_file_upload(request_id, "group_photo", "failed")
 
-            logger.info(f"[{request_id}] ✅ Team file uploads complete")
+            logger.info(f"[{request_id}] ✅ Team file uploads complete (stored in pending folder)")
         except CloudinaryUploadError as e:
             logger.error(f"[{request_id}] Required upload failed: {e}")
             return create_upload_error("pastor_letter", getattr(e, "retry_count", None))
@@ -385,33 +412,33 @@ async def register_team_production_hardened(
             return create_database_error("insert", str(e))
 
         # -------------------------------
-        # STORE IDEMPOTENCY RESPONSE
+        # STORE IDEMPOTENCY RESPONSE (without team_id for pending registrations)
         # -------------------------------
         if idempotency_key:
             try:
                 payload = json.dumps({
                     "success": True,
-                    "team_id": team_id,
                     "team_name": validated_team_name,
-                    "message": "Team registered successfully",
-                    "player_count": player_count
+                    "message": "Registration submitted successfully. Please wait for admin confirmation.",
+                    "player_count": player_count,
+                    "registration_status": "pending"
                 })
                 await store_idempotency_key(db, idempotency_key, payload)
             except Exception as e:
                 logger.warning(f"[{request_id}] Failed to store idempotency key: {e}")
 
         # -------------------------------
-        # RETURN SUCCESS
+        # RETURN SUCCESS (without team_id for pending registrations)
         # -------------------------------
-        logger.info(f"[{request_id}] Registration complete: {team_id}")
+        logger.info(f"[{request_id}] Registration complete (pending confirmation): {team_id}")
         return JSONResponse(
             status_code=201,
             content={
                 "success": True,
-                "team_id": team_id,
                 "team_name": validated_team_name,
-                "message": "Team registered successfully",
-                "player_count": player_count
+                "message": "Registration submitted successfully. Please wait for admin confirmation.",
+                "player_count": player_count,
+                "registration_status": "pending"
             }
         )
 

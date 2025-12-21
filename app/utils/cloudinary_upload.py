@@ -1,15 +1,20 @@
 """
-Async Cloudinary Upload Utility - ICCT26 PRODUCTION
-====================================================
-Prevents blocking with ThreadPoolExecutor for sync Cloudinary SDK.
-Handles all file uploads to Cloudinary asynchronously.
+Cloud-First Cloudinary Upload Utility - ICCT26 PRODUCTION
+==========================================================
+All files stored in Cloudinary immediately:
+- Pending files: /pending/{team_id}/ (temporary)
+- Confirmed files: /confirmed/{team_id}/ (with Team ID in filename)
+- Rejected files: Deleted instantly from Cloudinary
 """
 
 import os
 import cloudinary
 import cloudinary.uploader
+import cloudinary.api
 import asyncio
 import logging
+from pathlib import Path
+from typing import Optional, Dict, List
 from fastapi import UploadFile
 from concurrent.futures import ThreadPoolExecutor
 
@@ -35,8 +40,153 @@ def verify_cloudinary_config():
     return True
 
 
+class CloudinaryUploader:
+    """
+    Cloud-First Upload Manager
+    - Upload to /pending/ on registration
+    - Move to /confirmed/ with Team ID in filename on approval
+    - Delete from /pending/ on rejection
+    """
+    
+    def __init__(self):
+        self.cloud_name = os.getenv('CLOUDINARY_CLOUD_NAME')
+    
+    async def upload_pending_file(
+        self,
+        file_content: bytes,
+        team_id: str,
+        file_field_name: str,
+        original_filename: str
+    ) -> Optional[str]:
+        """
+        Upload file to Cloudinary PENDING folder
+        
+        Args:
+            file_content: File bytes
+            team_id: Team ID (e.g., "ICCT26-dda9")
+            file_field_name: Field name (payment_receipt, pastor_letter, group_photo)
+            original_filename: Original filename
+        
+        Returns:
+            Cloudinary URL or None if failed
+        """
+        try:
+            # Public ID: icct26-tournament/pending/ICCT26-dda9/payment_receipt
+            public_id = f"icct26-tournament/pending/{team_id}/{file_field_name}"
+            
+            logger.info(f"📤 Uploading pending file: {public_id}")
+            
+            # Upload to Cloudinary (sync call in executor)
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(
+                executor,
+                lambda: cloudinary.uploader.upload(
+                    file_content,
+                    public_id=public_id,
+                    resource_type="auto",
+                    overwrite=True
+                )
+            )
+            
+            url = result.get('secure_url')
+            logger.info(f"✅ Uploaded to pending: {url}")
+            
+            return url
+        
+        except Exception as e:
+            logger.error(f"❌ Error uploading pending file: {e}")
+            return None
+    
+    async def move_to_confirmed(
+        self,
+        team_id: str,
+        file_field_name: str
+    ) -> Optional[str]:
+        """
+        Move file from PENDING to CONFIRMED folder with Team ID in filename
+        
+        Args:
+            team_id: Team ID
+            file_field_name: Field name
+        
+        Returns:
+            New Cloudinary URL with Team ID in filename
+        """
+        try:
+            # Source: pending file
+            old_public_id = f"icct26-tournament/pending/{team_id}/{file_field_name}"
+            
+            # Destination: confirmed with Team ID in filename
+            new_public_id = f"icct26-tournament/confirmed/{team_id}/{team_id}_{file_field_name}"
+            
+            logger.info(f"🔄 Moving file: {old_public_id} → {new_public_id}")
+            
+            # Rename (move) in Cloudinary
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(
+                executor,
+                lambda: cloudinary.uploader.rename(
+                    old_public_id,
+                    new_public_id,
+                    resource_type="image",
+                    overwrite=True
+                )
+            )
+            
+            new_url = result.get('secure_url')
+            logger.info(f"✅ Moved to confirmed: {new_url}")
+            
+            return new_url
+        
+        except Exception as e:
+            logger.error(f"❌ Error moving file to confirmed: {e}")
+            return None
+    
+    async def delete_pending_files(self, team_id: str) -> bool:
+        """
+        Delete ALL pending files for a team (when rejected)
+        
+        Args:
+            team_id: Team ID
+        
+        Returns:
+            True if deleted successfully
+        """
+        try:
+            file_fields = ["payment_receipt", "pastor_letter", "group_photo"]
+            deleted_count = 0
+            
+            loop = asyncio.get_event_loop()
+            
+            for field_name in file_fields:
+                public_id = f"icct26-tournament/pending/{team_id}/{field_name}"
+                
+                try:
+                    result = await loop.run_in_executor(
+                        executor,
+                        lambda pid=public_id: cloudinary.uploader.destroy(pid)
+                    )
+                    if result.get('result') == 'ok':
+                        deleted_count += 1
+                        logger.info(f"🗑️ Deleted: {public_id}")
+                except Exception as e:
+                    logger.warning(f"⚠️ File not found or error: {public_id} - {e}")
+            
+            logger.info(f"✅ Deleted {deleted_count} files for team {team_id}")
+            return True
+        
+        except Exception as e:
+            logger.error(f"❌ Error deleting pending files: {e}")
+            return False
+
+
+# Global uploader instance
+cloudinary_uploader = CloudinaryUploader()
+
+
 async def upload_file_to_cloudinary_async(file: UploadFile, folder: str) -> str:
     """
+    Legacy function for backward compatibility
     Upload file to Cloudinary asynchronously using ThreadPoolExecutor.
     
     Args:
