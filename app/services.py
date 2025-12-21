@@ -203,6 +203,251 @@ class EmailService:
             return {"success": False, "message": str(e)}
     
     @staticmethod
+    def create_admin_approval_email(
+        team_name: str,
+        captain_name: str,
+        team_id: str,
+        church_name: str = "",
+        vice_captain_name: str = "",
+        vice_captain_phone: str = "",
+        vice_captain_email: str = "",
+        captain_phone: str = "",
+        captain_email: str = "",
+        players: List[Dict[str, Any]] = None
+    ) -> str:
+        """Create HTML email template for admin approval confirmation"""
+        
+        # Build players table HTML
+        players_html = ""
+        if players:
+            for idx, player in enumerate(players, 1):
+                player_id = player.get('playerId', 'N/A')
+                player_name = player.get('name', 'N/A')
+                players_html += f"""
+                <tr>
+                    <td style="padding: 12px; border-bottom: 1px solid #eee; text-align: center;">{idx}</td>
+                    <td style="padding: 12px; border-bottom: 1px solid #eee;"><strong>{player_id}</strong></td>
+                    <td style="padding: 12px; border-bottom: 1px solid #eee;">{player_name}</td>
+                </tr>
+                """
+        
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <style>
+                body {{
+                    font-family: Arial, sans-serif;
+                    line-height: 1.6;
+                    color: #333;
+                }}
+                .container {{
+                    max-width: 600px;
+                    margin: 0 auto;
+                    padding: 20px;
+                }}
+                .header {{
+                    background: linear-gradient(135deg, #FFCC29 0%, #002B5C 100%);
+                    color: white;
+                    padding: 30px;
+                    text-align: center;
+                    border-radius: 5px 5px 0 0;
+                }}
+                .content {{
+                    background: #f9f9f9;
+                    padding: 30px;
+                    border: 1px solid #ddd;
+                    border-radius: 0 0 5px 5px;
+                }}
+                .section {{
+                    background: white;
+                    padding: 20px;
+                    margin: 20px 0;
+                    border-left: 4px solid #FFCC29;
+                    border-radius: 3px;
+                }}
+                .team-id {{
+                    background: #f0f0f0;
+                    padding: 15px;
+                    border: 2px solid #FFCC29;
+                    border-radius: 5px;
+                    font-size: 18px;
+                    font-weight: bold;
+                    text-align: center;
+                    margin: 20px 0;
+                }}
+                .footer {{
+                    background: #333;
+                    color: white;
+                    padding: 20px;
+                    text-align: center;
+                    border-radius: 0 0 5px 5px;
+                    font-size: 12px;
+                    margin-top: 20px;
+                }}
+                a {{
+                    color: #FFCC29;
+                }}
+                ul {{
+                    padding-left: 20px;
+                }}
+                li {{
+                    margin: 10px 0;
+                }}
+                table {{
+                    width: 100%;
+                    border-collapse: collapse;
+                    margin: 15px 0;
+                }}
+                th {{
+                    background: #002B5C;
+                    color: white;
+                    padding: 12px;
+                    text-align: left;
+                }}
+                .info-row {{
+                    display: flex;
+                    padding: 10px 0;
+                    border-bottom: 1px solid #eee;
+                }}
+                .info-label {{
+                    font-weight: bold;
+                    width: 180px;
+                    color: #666;
+                }}
+                .info-value {{
+                    flex: 1;
+                    color: #333;
+                }}
+                .phone-link {{
+                    color: #002B5C;
+                    text-decoration: none;
+                    font-weight: 600;
+                    border-bottom: 2px solid #FFCC29;
+                    padding-bottom: 2px;
+                }}
+                .phone-link:hover {{
+                    color: #FFCC29;
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <h1>✅ Registration Approved!</h1>
+                    <p>Your Team is Ready to Play</p>
+                </div>
+                
+                <div class="content">
+                    <p>Dear <strong>{captain_name}</strong>,</p>
+                    <p>Great news! Your team <strong>{team_name}</strong> has been <strong>approved and confirmed</strong> for the ICCT26 Cricket Tournament. Your registration is now complete!</p>
+                    
+                    <div class="section">
+                        <h3>🏆 Your Team ID</h3>
+                        <p>Please save and remember your Team ID for all tournament communications:</p>
+                        <div class="team-id">{team_id}</div>
+                        <p style="text-align: center; color: #666; font-size: 12px;">Use this ID for check-in and reference</p>
+                    </div>
+                    
+                    <div class="section">
+                        <h3>📋 Team Information</h3>
+                        <div class="info-row">
+                            <div class="info-label">🏏 Team Name:</div>
+                            <div class="info-value"><strong>{team_name}</strong></div>
+                        </div>
+                        <div class="info-row">
+                            <div class="info-label">⛪ Church Name:</div>
+                            <div class="info-value">{church_name if church_name else 'N/A'}</div>
+                        </div>
+                        <div class="info-row">
+                            <div class="info-label">🎖️ Team ID:</div>
+                            <div class="info-value"><strong>{team_id}</strong></div>
+                        </div>
+                    </div>
+                    
+                    <div class="section">
+                        <h3>👤 Captain Details</h3>
+                        <div class="info-row">
+                            <div class="info-label">Name:</div>
+                            <div class="info-value"><strong>{captain_name}</strong></div>
+                        </div>
+                        <div class="info-row">
+                            <div class="info-label">Phone:</div>
+                            <div class="info-value">{captain_phone if captain_phone else 'N/A'}</div>
+                        </div>
+                        <div class="info-row">
+                            <div class="info-label">Email:</div>
+                            <div class="info-value">{captain_email if captain_email else 'N/A'}</div>
+                        </div>
+                    </div>
+                    
+                    <div class="section">
+                        <h3>👤 Vice Captain Details</h3>
+                        <div class="info-row">
+                            <div class="info-label">Name:</div>
+                            <div class="info-value"><strong>{vice_captain_name if vice_captain_name else 'N/A'}</strong></div>
+                        </div>
+                        <div class="info-row">
+                            <div class="info-label">Phone:</div>
+                            <div class="info-value">{vice_captain_phone if vice_captain_phone else 'N/A'}</div>
+                        </div>
+                        <div class="info-row">
+                            <div class="info-label">Email:</div>
+                            <div class="info-value">{vice_captain_email if vice_captain_email else 'N/A'}</div>
+                        </div>
+                    </div>
+                    
+                    <div class="section">
+                        <h3>👥 Team Players ({len(players) if players else 0} Players)</h3>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th style="text-align: center;">#</th>
+                                    <th>ICCT Player ID</th>
+                                    <th>Player Name</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {players_html if players_html else '<tr><td colspan="3" style="padding: 12px; text-align: center; color: #666;">No players registered</td></tr>'}
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <div class="section">
+                        <h3>❓ Important Reminders</h3>
+                        <ul>
+                            <li>Keep your Team ID ({team_id}) safe and handy</li>
+                            <li>Check website(<strong>icct26.netlify.app</strong>) regularly for match updates</li>
+                            <li>Bring valid IDs for all players at check-in (<strong>AADHAAR CARDS, SUBSCRIPTION CARDS, PASTOR LETTER</strong>)</li>
+                            <li>Follow tournament rules and regulations</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="section">
+                        <h3>📞 Contact Us</h3>
+                        
+                        <p><strong>Website:</strong> <a href="https://icct26.netlify.app" target="_blank">icct26.netlify.app</a></p>
+                        
+                        <p><strong>Tournament Coordinators:</strong></p>
+                        <p>Mr. Sam Richard (Head Co-Ordinator) - <a href="tel:+919543656533" class="phone-link">+91 9543656533</a></p>
+                        <p>Mr. Jebarsan (Co-Ordinator) - <a href="tel:+917806965812" class="phone-link">+91 7806965812</a></p>
+                        <p>Mr. Jerald (Co-Ordinator) - <a href="tel:+917871541469" class="phone-link">+91 7871541469</a></p>
+                    </div>
+                </div>
+                
+                <div class="footer">
+                    <p>This is an automated confirmation email. Please do not reply to this email.</p>
+                    <p>&copy; 2025 ICCT26 Cricket Tournament. All rights reserved.</p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        
+        return html_content
+    
+    @staticmethod
     async def send_email_async_if_available(to_email: str, subject: str, body: str) -> bool:
         """
         Send email asynchronously using thread pool executor.
@@ -334,6 +579,7 @@ class DatabaseService:
                        t.payment_receipt, t.pastor_letter, t.group_photo, t.created_at,
                        t.captain_name, t.captain_phone, t.captain_email,
                        t.vice_captain_name, t.vice_captain_phone, t.vice_captain_email,
+                       t.registration_status,
                        COUNT(p.id) as player_count
                 FROM teams t
                 LEFT JOIN players p ON p.team_id = t.team_id
@@ -358,6 +604,7 @@ class DatabaseService:
                     "viceCaptainEmail": row["vice_captain_email"],
                     "playerCount": row["player_count"],
                     "registrationDate": str(row["created_at"]) if row["created_at"] else None,
+                    "registrationStatus": row.get("registration_status", "pending"),
                     "paymentReceipt": row["payment_receipt"],
                     "pastorLetter": row["pastor_letter"],
                     "groupPhoto": row["group_photo"]
@@ -379,7 +626,8 @@ class DatabaseService:
             team_query = text("""
                 SELECT id, team_id, team_name, church_name, payment_receipt, pastor_letter, group_photo, created_at,
                        captain_name, captain_phone, captain_email,
-                       vice_captain_name, vice_captain_phone, vice_captain_email
+                       vice_captain_name, vice_captain_phone, vice_captain_email,
+                       registration_status
                 FROM teams
                 WHERE team_id = :team_id
             """)
@@ -422,7 +670,8 @@ class DatabaseService:
                     "paymentReceipt": team_data["payment_receipt"],
                     "pastorLetter": team_data["pastor_letter"],
                     "groupPhoto": team_data["group_photo"],
-                    "registrationDate": str(team_data["created_at"]) if team_data["created_at"] else None
+                    "registrationDate": str(team_data["created_at"]) if team_data["created_at"] else None,
+                    "registrationStatus": team_data.get("registration_status", "pending")
                 },
                 "players": [
                     {
@@ -437,6 +686,50 @@ class DatabaseService:
             
         except Exception as e:
             logger.error(f"Error fetching team details: {str(e)}")
+            raise
+
+    @staticmethod
+    async def update_team_registration_status(
+        db: AsyncSession, 
+        team_id: str, 
+        status: str
+    ) -> bool:
+        """
+        Update the registration status of a team.
+        
+        Args:
+            db: Database session
+            team_id: Team identifier
+            status: New status ('pending', 'confirmed', 'rejected')
+            
+        Returns:
+            True if team was found and updated, False otherwise
+        """
+        logger.info(f"Updating registration status for team {team_id} to {status}")
+        try:
+            update_query = text("""
+                UPDATE teams 
+                SET registration_status = :status
+                WHERE team_id = :team_id
+            """)
+            
+            result = await db.execute(
+                update_query, 
+                {"team_id": team_id, "status": status}
+            )
+            await db.commit()
+            
+            rows_updated = result.rowcount
+            if rows_updated > 0:
+                logger.info(f"✅ Successfully updated team {team_id} to status: {status}")
+                return True
+            else:
+                logger.warning(f"❌ Team not found: {team_id}")
+                return False
+                
+        except Exception as e:
+            await db.rollback()
+            logger.error(f"Error updating team registration status: {str(e)}")
             raise
 
     @staticmethod

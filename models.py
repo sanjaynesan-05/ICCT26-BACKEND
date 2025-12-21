@@ -43,6 +43,9 @@ class Team(Base):
     pastor_letter = Column(Text, nullable=True)
     group_photo = Column(Text, nullable=True)  # Team group photo (Base64)
 
+    # Registration status - 'pending', 'confirmed', 'rejected'
+    registration_status = Column(String(20), nullable=False, default='pending', server_default='pending', index=True)
+
     # Timestamps with server defaults
     registration_date = Column(DateTime, nullable=False, default=func.now(), server_default=func.now())
     created_at = Column(DateTime, default=func.now(), server_default=func.now())

@@ -116,12 +116,19 @@ class TestAdminEndpoints:
         
         assert response.status_code == 200, f"Expected 200, got {response.status_code}"
         data = response.json()
-        team = data.get("data", data)  # Handle both wrapped and direct response
+        
+        # Response structure: {"success": true, "data": {"team": {...}, "players": [...]}}
+        assert "data" in data, "Missing data wrapper"
+        team_data = data["data"]
+        
+        # Team details are in nested "team" object
+        assert "team" in team_data, "Missing team object"
+        team = team_data["team"]
         
         # Check for camelCase or snake_case field names
         assert "teamId" in team or "team_id" in team, "Missing team_id"
         assert "teamName" in team or "team_name" in team, "Missing team_name"
-        assert "players" in team, "Missing players array"
+        assert "players" in team_data, "Missing players array"
         
         print(f"✅ Retrieved team details for {team_id}")
         team_name = team.get("teamName") or team.get("team_name")
@@ -139,10 +146,12 @@ class TestAdminEndpoints:
         
         assert response.status_code == 404, f"Expected 404, got {response.status_code}"
         data = response.json()
-        assert "detail" in data, "Missing error detail"
+        # Accept both "detail" (FastAPI default) and "message" (custom error handler)
+        assert "detail" in data or "message" in data, "Missing error detail or message"
         
         print(f"✅ Correctly returned 404 for invalid team")
-        print(f"   Error: {data['detail']}")
+        error_msg = data.get('detail') or data.get('message')
+        print(f"   Error: {error_msg}")
         return True
 
     @pytest.mark.asyncio
@@ -160,19 +169,26 @@ class TestAdminEndpoints:
         team_id = teams[0].get("teamId") or teams[0].get("team_id")
         response = await client.get(f"{ADMIN_BASE}/teams/{team_id}")
         data = response.json()
-        team = data.get("data", data)  # Handle both wrapped and direct response
         
-        # Validate structure (camelCase or snake_case)
-        required_fields = [
+        # Response structure: {"success": true, "data": {"team": {...}, "players": [...]}}
+        assert "data" in data, "Missing data wrapper"
+        team_data = data["data"]
+        assert "team" in team_data, "Missing team object"
+        team = team_data["team"]
+        
+        # Validate team object structure (camelCase or snake_case)
+        required_team_fields = [
             ("teamId", "team_id"), 
             ("teamName", "team_name"), 
             ("churchName", "church_name"), 
             ("captain", "captain"), 
-            ("viceCaptain", "vice_captain"), 
-            ("players", "players")
+            ("viceCaptain", "vice_captain")
         ]
-        for camel_case, snake_case in required_fields:
+        for camel_case, snake_case in required_team_fields:
             assert camel_case in team or snake_case in team, f"Missing required field: {camel_case}/{snake_case}"
+        
+        # Players array is at team_data level, not inside team
+        assert "players" in team_data, "Missing players array"
         
         # Validate captain structure
         captain = team.get("captain")
@@ -241,10 +257,12 @@ class TestAdminEndpoints:
         
         assert response.status_code == 404, f"Expected 404, got {response.status_code}"
         data = response.json()
-        assert "detail" in data, "Missing error detail"
+        # Accept both "detail" (FastAPI default) and "message" (custom error handler)
+        assert "detail" in data or "message" in data, "Missing error detail or message"
         
         print(f"✅ Correctly returned 404 for invalid player")
-        print(f"   Error: {data['detail']}")
+        error_msg = data.get('detail') or data.get('message')
+        print(f"   Error: {error_msg}")
         return True
 
     @pytest.mark.asyncio
@@ -362,7 +380,7 @@ class TestAdminEndpointsSync:
         """Test: GET /admin/teams (sync)"""
         print("\n[SYNC] GET /admin/teams")
         
-        with httpx.Client() as client:
+        with httpx.Client(timeout=10.0) as client:
             response = client.get(f"{ADMIN_BASE}/teams")
             
             if response.status_code == 200:
