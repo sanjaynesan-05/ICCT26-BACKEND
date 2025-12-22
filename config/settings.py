@@ -106,6 +106,16 @@ class Settings(BaseSettings):
     def SMTP_PASSWORD(self) -> str:
         return self.SMTP_PASS
     
+    @property
+    def SENDER_EMAIL(self) -> str:
+        """Sender email address (defaults to SMTP_FROM_EMAIL)"""
+        return self.SMTP_FROM_EMAIL or self.SMTP_USER
+    
+    @property
+    def SENDER_NAME(self) -> str:
+        """Sender display name"""
+        return self.SMTP_FROM_NAME
+    
     # ============= API CONFIGURATION =============
     API_URL: str = Field(default="http://localhost:8000", description="Base API URL")
     API_HOST: str = Field(default="0.0.0.0", description="API host to bind to")

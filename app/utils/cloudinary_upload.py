@@ -162,6 +162,69 @@ class CloudinaryUploader:
         except Exception as e:
             logger.error(f"❌ Error deleting pending files: {e}")
             return False
+    
+    async def upload_file(
+        self,
+        file_content: bytes,
+        folder: str,
+        filename: str = None
+    ) -> Optional[str]:
+        """
+        Generic file upload method for compatibility
+        
+        Args:
+            file_content: File bytes
+            folder: Cloudinary folder path
+            filename: Optional filename
+        
+        Returns:
+            Cloudinary URL or None if failed
+        """
+        try:
+            public_id = f"{folder}/{filename}" if filename else folder
+            
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(
+                executor,
+                lambda: cloudinary.uploader.upload(
+                    file_content,
+                    public_id=public_id,
+                    resource_type="auto",
+                    overwrite=True
+                )
+            )
+            
+            return result.get('secure_url')
+        except Exception as e:
+            logger.error(f"❌ Error uploading file: {e}")
+            return None
+    
+    async def delete_file(self, public_id: str) -> bool:
+        """
+        Delete file from Cloudinary by public_id
+        
+        Args:
+            public_id: Cloudinary public_id (e.g., "icct26-tournament/pending/ICCT-001/payment_receipt")
+        
+        Returns:
+            True if deleted successfully
+        """
+        try:
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(
+                executor,
+                lambda: cloudinary.uploader.destroy(public_id)
+            )
+            
+            if result.get('result') == 'ok':
+                logger.info(f"✅ Deleted file: {public_id}")
+                return True
+            else:
+                logger.warning(f"⚠️ File not found: {public_id}")
+                return False
+        except Exception as e:
+            logger.error(f"❌ Error deleting file {public_id}: {e}")
+            return False
 
 
 # Global uploader instance
