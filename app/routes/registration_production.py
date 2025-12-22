@@ -17,6 +17,7 @@ from models import Team, Player
 
 # Utilities (assumes these exist in your project)
 from app.utils.race_safe_team_id import generate_next_team_id_with_retry
+from config.settings import settings
 from app.utils.validation import (
     validate_name,
     validate_team_name,
@@ -43,6 +44,87 @@ from starlette.datastructures import UploadFile  # type: ignore
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+# ============================================================
+# CONFIGURATION: Retry settings with defensive fallback
+# ============================================================
+MAX_RETRIES = getattr(settings, 'MAX_RETRIES', 3)
+logger.info(f"🔧 MAX_RETRIES configured: {MAX_RETRIES} (default: 3)")
+
+
+# ============================================================
+# CLEANUP FUNCTION: Cloudinary orphaned file removal
+# ============================================================
+async def cleanup_cloudinary_uploads(uploaded_urls: Dict[str, Optional[str]], team_id: str, request_id: str) -> bool:
+    """
+    Delete uploaded files from Cloudinary if database save fails.
+    Prevents orphaned files when registration fails after Cloudinary uploads.
+    
+    Args:
+        uploaded_urls: Dict with keys like 'pastor_letter', 'payment_receipt', 'group_photo'
+        team_id: Team ID for logging
+        request_id: Request ID for tracing
+    
+    Returns:
+        bool: True if cleanup successful or no files to delete, False if cleanup failed
+    """
+    try:
+        deletion_count = 0
+        failed_deletions = []
+        
+        logger.warning(f"[{request_id}] 🧹 CLEANUP: Starting Cloudinary cleanup for team {team_id}")
+        
+        for file_type, url in uploaded_urls.items():
+            if not url:
+                continue  # Skip empty/None URLs
+            
+            try:
+                # Extract public_id from Cloudinary URL
+                # URL format: https://res.cloudinary.com/.../upload/v.../ICCT-XXX_fieldname
+                if 'cloudinary.com' in url:
+                    # Extract public_id from URL - last part before file extension
+                    parts = url.split('/')[-1].split('.')
+                    public_id = parts[0] if parts else None
+                    
+                    if public_id:
+                        logger.info(f"[{request_id}] 🗑️ Attempting to delete from Cloudinary: {public_id}")
+                        # Use cloudinary_uploader to delete
+                        from app.utils.cloudinary_upload import cloudinary_uploader
+                        
+                        # Try to delete from both pending and confirmed folders
+                        deleted = False
+                        for folder in [f"pending/{team_id}", f"confirmed/{team_id}"]:
+                            try:
+                                cloudinary_uploader.delete_file(f"{folder}/{public_id}")
+                                logger.info(f"[{request_id}] ✅ CLEANUP: Deleted {folder}/{public_id}")
+                                deletion_count += 1
+                                deleted = True
+                                break
+                            except Exception as e:
+                                logger.debug(f"[{request_id}] File not in {folder}: {e}")
+                                continue
+                        
+                        if not deleted:
+                            failed_deletions.append(f"{file_type}: {public_id}")
+                
+            except Exception as e:
+                logger.warning(f"[{request_id}] ⚠️ CLEANUP: Failed to delete {file_type}: {e}")
+                failed_deletions.append(file_type)
+                continue
+        
+        if deletion_count > 0:
+            logger.warning(f"[{request_id}] ✅ CLEANUP: Deleted {deletion_count} orphaned file(s)")
+        
+        if failed_deletions:
+            logger.error(f"[{request_id}] ⚠️ CLEANUP: Some files could not be deleted: {failed_deletions}")
+        
+        return True
+        
+    except Exception as e:
+        logger.error(f"[{request_id}] ❌ CLEANUP: Cleanup failed: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return False
 
 
 @router.post("/register/team")
@@ -356,6 +438,15 @@ async def register_team_production_hardened(
                 if "teams_team_id_key" in str(integrity_err) or "duplicate key" in str(integrity_err).lower():
                     if db_attempt == MAX_RETRIES - 1:
                         logger.error(f"[{request_id}] ❌ Failed to insert team after {MAX_RETRIES} retries - duplicate team_id")
+                        
+                        # CLEANUP: Delete orphaned Cloudinary files
+                        uploaded_files = {
+                            "pastor_letter": pastor_url,
+                            "payment_receipt": receipt_url,
+                            "group_photo": photo_url
+                        }
+                        await cleanup_cloudinary_uploads(uploaded_files, team_id, request_id)
+                        
                         return create_error_response(
                             ErrorCode.DATABASE_ERROR,
                             "Unable to generate unique team ID after retries",
@@ -367,6 +458,15 @@ async def register_team_production_hardened(
                 else:
                     # Different integrity error - might be duplicate captain/team name
                     logger.error(f"[{request_id}] ❌ Database integrity error: {integrity_err}")
+                    
+                    # CLEANUP: Delete orphaned Cloudinary files
+                    uploaded_files = {
+                        "pastor_letter": pastor_url,
+                        "payment_receipt": receipt_url,
+                        "group_photo": photo_url
+                    }
+                    await cleanup_cloudinary_uploads(uploaded_files, team_id, request_id)
+                    
                     # Check for idempotency
                     if idempotency_key:
                         existing = await check_idempotency_key(db, idempotency_key)
@@ -385,6 +485,15 @@ async def register_team_production_hardened(
         
         if not team_inserted:
             logger.error(f"[{request_id}] ❌ Failed to insert team after all retries")
+            
+            # CLEANUP: Delete orphaned Cloudinary files
+            uploaded_files = {
+                "pastor_letter": pastor_url,
+                "payment_receipt": receipt_url,
+                "group_photo": photo_url
+            }
+            await cleanup_cloudinary_uploads(uploaded_files, team_id, request_id)
+            
             return create_error_response(
                 ErrorCode.DATABASE_ERROR,
                 "Failed to insert team after retries",

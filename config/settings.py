@@ -147,6 +147,10 @@ class Settings(BaseSettings):
     TOURNAMENT_LOCATION: str = Field(default="Coimbatore, Tamil Nadu", description="Tournament location")
     TOURNAMENT_FORMAT: str = Field(default="Red Tennis Ball Cricket", description="Tournament format")
     
+    # ============= RETRY CONFIGURATION =============
+    MAX_RETRIES: int = Field(default=3, description="Maximum retry attempts for database operations")
+    RETRY_DELAY: float = Field(default=0.1, description="Initial delay between retries in seconds (exponential backoff)")
+    
     # ============= TEAM REGISTRATION CONSTRAINTS =============
     MIN_PLAYERS: int = Field(default=11, description="Minimum players required per team")
     MAX_PLAYERS: int = Field(default=15, description="Maximum players allowed per team")
