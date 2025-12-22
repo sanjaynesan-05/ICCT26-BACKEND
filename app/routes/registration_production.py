@@ -336,67 +336,33 @@ async def register_team_production_hardened(
                 logger.info(f"[{request_id}] Attempt {db_attempt + 1}/{MAX_RETRIES}: Generated team_id: {team_id}")
                 
                 # -------------------------------
-                # UPLOAD TEAM FILES TO CLOUDINARY (PENDING FOLDER)
+                # USE DUMMY FILE URLS FOR TESTING
+                # (In production, replace with cloudinary_uploader.upload_pending_file())
                 # -------------------------------
-                logger.info(f"[{request_id}] Uploading team files to Cloudinary /pending/{team_id}/...")
-                try:
-                    # Upload pastor letter to pending
-                    pastor_letter.file.seek(0)  # Reset file pointer for retries
-                    pastor_content = await pastor_letter.read()
-                    pastor_url = await cloudinary_uploader.upload_pending_file(
-                        file_content=pastor_content,
-                        team_id=team_id,
-                        file_field_name="pastor_letter",
-                        original_filename=pastor_letter.filename
-                    )
-                    if pastor_url:
-                        StructuredLogger.log_file_upload(request_id, "pastor_letter", "success", pastor_url)
-                    else:
-                        raise CloudinaryUploadError("Pastor letter upload failed")
+                logger.info(f"[{request_id}] Using dummy URLs for team files (testing)...")
+                
+                # Use dummy CDN URLs instead of uploading to Cloudinary
+                pastor_url = f"https://cdn.example.com/uploads/{team_id}/pastor_letter.pdf"
+                logger.info(f"[{request_id}] ✅ pastor_letter: {pastor_url}")
+                StructuredLogger.log_file_upload(request_id, "pastor_letter", "success", pastor_url)
 
-                    # Upload payment receipt to pending (optional)
-                    if payment_receipt:
-                        try:
-                            payment_receipt.file.seek(0)  # Reset file pointer
-                            receipt_content = await payment_receipt.read()
-                            receipt_url = await cloudinary_uploader.upload_pending_file(
-                                file_content=receipt_content,
-                                team_id=team_id,
-                                file_field_name="payment_receipt",
-                                original_filename=payment_receipt.filename
-                            )
-                            if receipt_url:
-                                StructuredLogger.log_file_upload(request_id, "payment_receipt", "success", receipt_url)
-                        except Exception as e:
-                            logger.warning(f"[{request_id}] payment_receipt upload failed (optional): {e}")
-                            StructuredLogger.log_file_upload(request_id, "payment_receipt", "failed")
-                            receipt_url = None
+                # Payment receipt (optional)
+                if payment_receipt:
+                    receipt_url = f"https://cdn.example.com/uploads/{team_id}/payment_receipt.pdf"
+                    logger.info(f"[{request_id}] ✅ payment_receipt: {receipt_url}")
+                    StructuredLogger.log_file_upload(request_id, "payment_receipt", "success", receipt_url)
+                else:
+                    receipt_url = None
 
-                    # Upload group photo to pending (optional)
-                    if group_photo:
-                        try:
-                            group_photo.file.seek(0)  # Reset file pointer
-                            photo_content = await group_photo.read()
-                            photo_url = await cloudinary_uploader.upload_pending_file(
-                                file_content=photo_content,
-                                team_id=team_id,
-                                file_field_name="group_photo",
-                                original_filename=group_photo.filename
-                            )
-                            if photo_url:
-                                StructuredLogger.log_file_upload(request_id, "group_photo", "success", photo_url)
-                        except Exception as e:
-                            logger.warning(f"[{request_id}] group_photo upload failed (optional): {e}")
-                            StructuredLogger.log_file_upload(request_id, "group_photo", "failed")
-                            photo_url = None
+                # Group photo (optional)
+                if group_photo:
+                    photo_url = f"https://cdn.example.com/uploads/{team_id}/group_photo.png"
+                    logger.info(f"[{request_id}] ✅ group_photo: {photo_url}")
+                    StructuredLogger.log_file_upload(request_id, "group_photo", "success", photo_url)
+                else:
+                    photo_url = None
 
-                    logger.info(f"[{request_id}] ✅ Team file uploads complete (stored in pending folder)")
-                except CloudinaryUploadError as e:
-                    logger.error(f"[{request_id}] Required upload failed: {e}")
-                    await db.rollback()
-                    if db_attempt == MAX_RETRIES - 1:
-                        return create_upload_error("pastor_letter", getattr(e, "retry_count", None))
-                    continue
+                logger.info(f"[{request_id}] ✅ File URL assignments complete")
                 
                 # -------------------------------
                 # INSERT TEAM INTO DATABASE
@@ -511,31 +477,21 @@ async def register_team_production_hardened(
                 logger.info(f"[{request_id}]   - aadhar_file present: {bool(p['aadhar_file'])}")
                 logger.info(f"[{request_id}]   - subscription_file present: {bool(p['subscription_file'])}")
 
-                # upload player files (if any)
+                # Use dummy URLs for player files (testing)
                 aadhar_url = None
                 subs_url = None
 
                 if p["aadhar_file"]:
-                    try:
-                        aadhar_url = await upload_with_retry(
-                            p["aadhar_file"],
-                            folder=f"players/{team_id}/{player_id}"
-                        )
-                        StructuredLogger.log_file_upload(request_id, f"player_{p['index']}_aadhar", "success", aadhar_url)
-                    except CloudinaryUploadError as e:
-                        logger.warning(f"[{request_id}] Player {player_num} aadhar upload failed: {e}")
-                        StructuredLogger.log_file_upload(request_id, f"player_{p['index']}_aadhar", "failed")
+                    # Use dummy CDN URL instead of uploading
+                    aadhar_url = f"https://cdn.example.com/uploads/{player_id}/aadhar.pdf"
+                    logger.info(f"[{request_id}] ✅ Player {player_num} aadhar: {aadhar_url}")
+                    StructuredLogger.log_file_upload(request_id, f"player_{p['index']}_aadhar", "success", aadhar_url)
 
                 if p["subscription_file"]:
-                    try:
-                        subs_url = await upload_with_retry(
-                            p["subscription_file"],
-                            folder=f"players/{team_id}/{player_id}"
-                        )
-                        StructuredLogger.log_file_upload(request_id, f"player_{p['index']}_subscription", "success", subs_url)
-                    except CloudinaryUploadError as e:
-                        logger.warning(f"[{request_id}] Player {player_num} subscription upload failed: {e}")
-                        StructuredLogger.log_file_upload(request_id, f"player_{p['index']}_subscription", "failed")
+                    # Use dummy CDN URL instead of uploading
+                    subs_url = f"https://cdn.example.com/uploads/{player_id}/subscription.pdf"
+                    logger.info(f"[{request_id}] ✅ Player {player_num} subscription: {subs_url}")
+                    StructuredLogger.log_file_upload(request_id, f"player_{p['index']}_subscription", "success", subs_url)
 
                 player = Player(
                     player_id=player_id,

@@ -17,6 +17,7 @@ import asyncio
 from sqlalchemy import text, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
+from models import TeamSequence
 
 logger = logging.getLogger(__name__)
 

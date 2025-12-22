@@ -14,6 +14,17 @@ from database import Base
 from app.utils.idempotency import IdempotencyKey
 
 
+class TeamSequence(Base):
+    """Team ID sequence table for race-safe ID generation"""
+    __tablename__ = "team_sequence"
+    
+    id = Column(Integer, primary_key=True)
+    last_number = Column(Integer, nullable=False, default=0)
+    
+    def __repr__(self):
+        return f"<TeamSequence(id={self.id}, last_number={self.last_number})>"
+
+
 class Team(Base):
     """Team model matching PostgreSQL schema exactly"""
     __tablename__ = "teams"
