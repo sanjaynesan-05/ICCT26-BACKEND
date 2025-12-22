@@ -295,6 +295,17 @@ async def startup_event():
                         logger.error(f"  - {error}")
                 else:
                     logger.info("✅ Database schema validation PASSED")
+                
+                # SYNC SEQUENCE TABLE WITH ACTUAL TEAMS
+                logger.info("🔄 Syncing team_sequence with actual teams in database...")
+                from app.utils.race_safe_team_id import sync_sequence_with_teams, get_current_sequence_number
+                
+                sync_success = await sync_sequence_with_teams(db)
+                if sync_success:
+                    current_seq = await get_current_sequence_number(db)
+                    logger.info(f"✅ Sequence synchronized (current: {current_seq}, next: ICCT-{current_seq + 1:03d})")
+                else:
+                    logger.warning("⚠️ Failed to sync sequence, continuing with current state...")
             
             # Validate DatabaseService methods
             service_results = validate_database_service_methods()

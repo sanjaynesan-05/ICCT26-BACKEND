@@ -376,3 +376,151 @@ async def reject_team_registration(
     except Exception as e:
         logger.exception(f"❌ Error rejecting team registration: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal Server Error")
+
+
+# =====================================================
+# SEQUENCE TABLE MANAGEMENT - TEAM ID CONTROL
+# =====================================================
+
+@router.get("/sequence/current")
+async def get_current_sequence(db: AsyncSession = Depends(get_db_async)):
+    """
+    Get current team ID sequence number.
+    
+    Returns the last_number from team_sequence table.
+    The next team will be ICCT-{last_number+1}.
+    
+    Returns:
+        {
+            "success": true,
+            "current_number": 5,
+            "next_team_id": "ICCT-006",
+            "message": "Current sequence state"
+        }
+    """
+    logger.info("GET /admin/sequence/current - Fetching current sequence...")
+    try:
+        from app.utils.race_safe_team_id import get_current_sequence_number
+        
+        current_num = await get_current_sequence_number(db)
+        next_id = f"ICCT-{current_num + 1:03d}"
+        
+        logger.info(f"✅ Current sequence: {current_num}, Next ID: {next_id}")
+        return {
+            "success": True,
+            "current_number": current_num,
+            "next_team_id": next_id,
+            "message": "Current sequence state"
+        }
+    except Exception as e:
+        logger.exception(f"❌ Failed to get sequence: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get sequence: {str(e)}")
+
+
+@router.post("/sequence/reset")
+async def reset_sequence(
+    new_number: int = Query(..., description="Number to reset sequence to (next team will be ICCT-{new_number+1})"),
+    db: AsyncSession = Depends(get_db_async)
+):
+    """
+    ADMIN ONLY: Manually reset team ID sequence.
+    
+    WARNING: Use with extreme caution!
+    - Setting to 0: Next team gets ICCT-001
+    - Setting to 100: Next team gets ICCT-101
+    - Cannot set to negative numbers
+    
+    Query Parameters:
+    - new_number (required): Number to reset to
+    
+    Returns:
+        {
+            "success": true,
+            "message": "Sequence reset to 100",
+            "new_number": 100,
+            "next_team_id": "ICCT-101"
+        }
+    
+    Raises:
+        400: If new_number is negative or invalid
+        500: If database error occurs
+    """
+    logger.warning(f"POST /admin/sequence/reset - ADMIN ACTION: Reset sequence to {new_number}")
+    
+    try:
+        if new_number < 0:
+            logger.error(f"❌ Invalid sequence number: {new_number} (must be >= 0)")
+            raise HTTPException(status_code=400, detail="new_number must be >= 0")
+        
+        from app.utils.race_safe_team_id import reset_sequence, get_current_sequence_number
+        
+        success = await reset_sequence(db, new_number)
+        
+        if not success:
+            raise Exception("Failed to reset sequence in database")
+        
+        # Verify the reset
+        current = await get_current_sequence_number(db)
+        next_id = f"ICCT-{current + 1:03d}"
+        
+        logger.warning(f"✅ Sequence reset to {new_number}, next will be {next_id}")
+        return {
+            "success": True,
+            "message": f"Sequence reset to {new_number}",
+            "new_number": current,
+            "next_team_id": next_id
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"❌ Failed to reset sequence: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to reset sequence: {str(e)}")
+
+
+@router.post("/sequence/sync")
+async def sync_sequence_with_database(db: AsyncSession = Depends(get_db_async)):
+    """
+    Sync team_sequence table with actual teams in database.
+    
+    If sequence is out of sync, updates it to match the max team number.
+    Runs automatically on startup but can be called manually if needed.
+    
+    Example:
+    - Teams in DB: ICCT-001, ICCT-002, ICCT-005
+    - Max team number: 5
+    - Sequence was: 3
+    - After sync: 5
+    - Next team: ICCT-006
+    
+    Returns:
+        {
+            "success": true,
+            "message": "Sequence in sync",
+            "sequence_number": 5,
+            "max_team_in_database": 5,
+            "next_team_id": "ICCT-006"
+        }
+    """
+    logger.info("POST /admin/sequence/sync - Syncing sequence with database...")
+    
+    try:
+        from app.utils.race_safe_team_id import sync_sequence_with_teams, get_current_sequence_number
+        
+        success = await sync_sequence_with_teams(db)
+        
+        if not success:
+            raise Exception("Failed to sync sequence")
+        
+        current = await get_current_sequence_number(db)
+        next_id = f"ICCT-{current + 1:03d}"
+        
+        logger.info(f"✅ Sequence synced, current: {current}, next: {next_id}")
+        return {
+            "success": True,
+            "message": "Sequence in sync",
+            "sequence_number": current,
+            "next_team_id": next_id
+        }
+    except Exception as e:
+        logger.exception(f"❌ Failed to sync sequence: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to sync sequence: {str(e)}")

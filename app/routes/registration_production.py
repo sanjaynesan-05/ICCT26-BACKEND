@@ -16,7 +16,7 @@ from database import get_db_async
 from models import Team, Player
 
 # Utilities (assumes these exist in your project)
-from app.utils.race_safe_team_id import generate_next_team_id
+from app.utils.race_safe_team_id import generate_next_team_id_with_retry
 from app.utils.validation import (
     validate_name,
     validate_team_name,
@@ -236,30 +236,20 @@ async def register_team_production_hardened(
         logger.info(f"[{request_id}] ✅ Players detected: {len(players)}")
 
         # -------------------------------
-        # GENERATE TEAM ID WITH RETRY LOGIC
+        # GENERATE TEAM ID WITH SEQUENCE TABLE (ATOMIC WITH FOR UPDATE)
         # -------------------------------
-        logger.info(f"[{request_id}] Generating team id with retry-safe logic...")
-        team_id = None
-        MAX_RETRIES = 5
-        
-        for attempt in range(MAX_RETRIES):
-            try:
-                team_id = await generate_next_team_id(db)
-                logger.info(f"[{request_id}] Generated team_id: {team_id} (attempt {attempt + 1})")
-                break  # Success - exit retry loop
-            except Exception as e:
-                logger.warning(f"[{request_id}] Team ID generation attempt {attempt + 1} failed: {e}")
-                if attempt == MAX_RETRIES - 1:
-                    logger.exception(f"[{request_id}] Failed to generate team id after {MAX_RETRIES} retries")
-                    return create_error_response(
-                        ErrorCode.TEAM_ID_GENERATION_FAILED, 
-                        "Unable to generate unique team ID after retries", 
-                        {"error": str(e)}, 
-                        500
-                    )
-                # Small delay before retry
-                import asyncio
-                await asyncio.sleep(0.1 * (attempt + 1))
+        logger.info(f"[{request_id}] Generating team id using sequence table (FOR UPDATE locking)...")
+        try:
+            team_id = await generate_next_team_id_with_retry(db, max_retries=5)
+            logger.info(f"[{request_id}] ✅ Generated team_id: {team_id}")
+        except Exception as e:
+            logger.exception(f"[{request_id}] ❌ Failed to generate team id: {e}")
+            return create_error_response(
+                ErrorCode.TEAM_ID_GENERATION_FAILED, 
+                "Unable to generate unique team ID", 
+                {"error": str(e)}, 
+                500
+            )
 
         # -------------------------------
         # UPLOAD TEAM FILES TO CLOUDINARY (PENDING FOLDER)

@@ -313,3 +313,116 @@ def validate_database_service_methods():
     logger.info("=" * 60)
     
     return results
+
+
+async def validate_sequence_table(db: AsyncSession) -> dict:
+    """
+    Validate team_sequence table configuration
+    
+    Returns:
+        dict: Validation results for sequence table
+    """
+    results = {
+        "valid": True,
+        "errors": [],
+        "warnings": [],
+        "checks": []
+    }
+    
+    logger.info("🔍 Validating team_sequence table...")
+    
+    try:
+        # Check 1: Table exists
+        query = text("""
+            SELECT EXISTS(
+                SELECT 1 FROM information_schema.tables 
+                WHERE table_name = 'team_sequence'
+            )
+        """)
+        result = await db.execute(query)
+        table_exists = result.scalar()
+        
+        if not table_exists:
+            error = "team_sequence table does not exist"
+            results["errors"].append(error)
+            results["valid"] = False
+            results["checks"].append({
+                "check": "team_sequence table exists",
+                "status": "❌ FAIL",
+                "details": error
+            })
+            logger.error(f"❌ {error}")
+            return results
+        else:
+            results["checks"].append({
+                "check": "team_sequence table exists",
+                "status": "✅ PASS"
+            })
+            logger.info("✅ team_sequence table exists")
+        
+        # Check 2: Columns exist and have correct types
+        query = text("""
+            SELECT column_name, data_type, is_nullable
+            FROM information_schema.columns
+            WHERE table_name = 'team_sequence'
+            ORDER BY ordinal_position
+        """)
+        result = await db.execute(query)
+        columns = {row[0]: (row[1], row[2]) for row in result}
+        
+        required_columns = {
+            'id': 'integer',
+            'last_number': 'integer',
+            'updated_at': ('timestamp without time zone', 'timestamp with time zone')
+        }
+        
+        for col_name, expected_type in required_columns.items():
+            if col_name not in columns:
+                error = f"Column '{col_name}' missing from team_sequence"
+                results["errors"].append(error)
+                results["valid"] = False
+                logger.error(f"❌ {error}")
+            else:
+                actual_type = columns[col_name][0]
+                if isinstance(expected_type, tuple):
+                    type_match = actual_type in expected_type
+                else:
+                    type_match = actual_type == expected_type
+                
+                if type_match:
+                    results["checks"].append({
+                        "check": f"team_sequence.{col_name}",
+                        "status": "✅ PASS",
+                        "details": f"Type: {actual_type}"
+                    })
+                    logger.info(f"✅ Column {col_name}: {actual_type}")
+                else:
+                    error = f"Column {col_name} has wrong type: {actual_type} (expected {expected_type})"
+                    results["errors"].append(error)
+                    results["valid"] = False
+                    logger.error(f"❌ {error}")
+        
+        # Check 3: Initial row exists
+        query = text("SELECT last_number FROM team_sequence WHERE id = 1")
+        result = await db.execute(query)
+        row = result.scalar_one_or_none()
+        
+        if row is not None:
+            results["checks"].append({
+                "check": "team_sequence initial row (id=1)",
+                "status": "✅ PASS",
+                "details": f"Current sequence: {row}"
+            })
+            logger.info(f"✅ Initial sequence row exists (current: {row}, next: ICCT-{row + 1:03d})")
+        else:
+            warning = "Initial sequence row (id=1) not found - will be created on first use"
+            results["warnings"].append(warning)
+            logger.warning(f"⚠️ {warning}")
+        
+    except Exception as e:
+        error = f"Failed to validate sequence table: {str(e)}"
+        results["errors"].append(error)
+        results["valid"] = False
+        logger.error(f"❌ {error}")
+    
+    return results
