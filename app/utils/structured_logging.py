@@ -232,3 +232,31 @@ def log_upload_failed(logger: StructuredLogger, filename: str, reason: str):
             }
         }
     )
+
+
+# Generic logging helper functions for compatibility
+def log_info(message: str, **kwargs):
+    """Generic info logging helper"""
+    logger = logging.getLogger(__name__)
+    if kwargs:
+        logger.info(f"{message} - {kwargs}")
+    else:
+        logger.info(message)
+
+
+def log_error(message: str, **kwargs):
+    """Generic error logging helper"""
+    logger = logging.getLogger(__name__)
+    if kwargs:
+        logger.error(f"{message} - {kwargs}")
+    else:
+        logger.error(message)
+
+
+def log_warning(message: str, **kwargs):
+    """Generic warning logging helper"""
+    logger = logging.getLogger(__name__)
+    if kwargs:
+        logger.warning(f"{message} - {kwargs}")
+    else:
+        logger.warning(message)

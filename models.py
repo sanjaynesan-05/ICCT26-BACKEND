@@ -10,6 +10,10 @@ from sqlalchemy.orm import relationship
 from database import Base
 
 
+# Import IdempotencyKey from utils for backward compatibility
+from app.utils.idempotency import IdempotencyKey
+
+
 class Team(Base):
     """Team model matching PostgreSQL schema exactly"""
     __tablename__ = "teams"
@@ -172,3 +176,7 @@ class Match(Base):
 
     def __repr__(self):
         return f"<Match(id={self.id}, round={self.round}, team1={self.team1_id}, team2={self.team2_id}, status={self.status})>"
+
+
+# Alias for backward compatibility - MatchDetail is same as Match
+MatchDetail = Match

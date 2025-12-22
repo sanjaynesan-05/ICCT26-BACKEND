@@ -59,3 +59,7 @@ def generate_player_id(team_id: str, player_index: int) -> str:
         str: Player ID (e.g., "ICCT-001-P01", "ICCT-001-P02")
     """
     return f"{team_id}-P{player_index:02d}"
+
+
+# Alias for backward compatibility
+generate_team_id = generate_sequential_team_id

@@ -258,7 +258,7 @@ class RegistrationResponse(BaseModel):
     players_count: int = Field(..., description="Number of players")
     registered_at: str = Field(..., description="Registration timestamp")
     email_sent: bool = Field(..., description="Whether confirmation email was sent")
-    database_saved: bool = Field(..., description="Whether data was saved to database")
+    database_saved: bool = Field(default=True, description="Whether data was saved to database")
 
     model_config = ConfigDict(json_schema_extra={
         "example": {
@@ -273,6 +273,10 @@ class RegistrationResponse(BaseModel):
             "database_saved": True
         }
     })
+
+
+# Alias for backward compatibility
+TeamResponse = RegistrationResponse
 
 
 class TeamListItem(BaseModel):

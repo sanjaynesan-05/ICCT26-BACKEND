@@ -289,3 +289,16 @@ class ErrorResponse(BaseModel):
     success: bool = False
     error: str
     details: Optional[str] = None
+
+
+# TeamUpdate schema for backward compatibility
+class TeamUpdate(BaseModel):
+    """Schema for updating team information"""
+    team_name: Optional[str] = None
+    captain_name: Optional[str] = None
+    vice_captain_name: Optional[str] = None
+    captain_phone: Optional[str] = None
+    captain_email: Optional[str] = None
+    
+    model_config = ConfigDict(from_attributes=True)
+

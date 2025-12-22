@@ -488,3 +488,8 @@ class ExportResponse(BaseModel):
     """Response for schedule export"""
     success: bool
     data: List[MatchResponse]
+
+
+# Aliases for backward compatibility
+MatchCreate = MatchCreateRequest
+MatchUpdate = MatchUpdateRequest

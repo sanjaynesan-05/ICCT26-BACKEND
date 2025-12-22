@@ -221,3 +221,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             )
             
             raise
+
+
+# Alias for backward compatibility
+LoggingMiddleware = RequestLoggingMiddleware

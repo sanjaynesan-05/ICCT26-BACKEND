@@ -151,3 +151,7 @@ async def cleanup_expired_keys(db: AsyncSession) -> int:
     except Exception as e:
         logger.error(f"❌ Error cleaning up idempotency keys: {e}")
         return 0
+
+
+# Alias for backward compatibility
+save_idempotency_key = store_idempotency_key
