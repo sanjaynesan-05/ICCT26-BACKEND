@@ -318,177 +318,99 @@ async def register_team_production_hardened(
         logger.info(f"[{request_id}] ✅ Players detected: {len(players)}")
 
         # -------------------------------
-        # CREATE DATABASE RECORDS WITH RETRY LOGIC
+        # PRE-VALIDATE CAPTAIN EMAIL
         # -------------------------------
-        logger.info(f"[{request_id}] Creating database records (team + players) with retry-safe logic...")
-        
-        # Retry loop for team insertion to handle duplicate team_id
-        team_inserted = False
-        team_id = None  # Initialize team_id
-        pastor_url = None
-        receipt_url = None
-        photo_url = None
-        
-        for db_attempt in range(MAX_RETRIES):
-            try:
-                # Generate new team_id for each attempt (including first)
-                team_id = await generate_next_team_id(db)
-                logger.info(f"[{request_id}] Attempt {db_attempt + 1}/{MAX_RETRIES}: Generated team_id: {team_id}")
-                
-                # -------------------------------
-                # USE DUMMY FILE URLS FOR TESTING
-                # (In production, replace with cloudinary_uploader.upload_pending_file())
-                # -------------------------------
-                logger.info(f"[{request_id}] Using dummy URLs for team files (testing)...")
-                
-                # Use dummy CDN URLs instead of uploading to Cloudinary
-                pastor_url = f"https://cdn.example.com/uploads/{team_id}/pastor_letter.pdf"
-                logger.info(f"[{request_id}] ✅ pastor_letter: {pastor_url}")
-                StructuredLogger.log_file_upload(request_id, "pastor_letter", "success", pastor_url)
-
-                # Payment receipt (optional)
-                if payment_receipt:
-                    receipt_url = f"https://cdn.example.com/uploads/{team_id}/payment_receipt.pdf"
-                    logger.info(f"[{request_id}] ✅ payment_receipt: {receipt_url}")
-                    StructuredLogger.log_file_upload(request_id, "payment_receipt", "success", receipt_url)
-                else:
-                    receipt_url = None
-
-                # Group photo (optional)
-                if group_photo:
-                    photo_url = f"https://cdn.example.com/uploads/{team_id}/group_photo.png"
-                    logger.info(f"[{request_id}] ✅ group_photo: {photo_url}")
-                    StructuredLogger.log_file_upload(request_id, "group_photo", "success", photo_url)
-                else:
-                    photo_url = None
-
-                logger.info(f"[{request_id}] ✅ File URL assignments complete")
-                
-                # -------------------------------
-                # INSERT TEAM INTO DATABASE
-                # -------------------------------
-                team = Team(
-                    team_id=team_id,
-                    team_name=validated_team_name,
-                    church_name=validated_church_name,
-                    captain_name=validated_captain_name,
-                    captain_phone=validated_captain_phone,
-                    captain_email=validated_captain_email,
-                    captain_whatsapp=validated_captain_whatsapp,
-                    vice_captain_name=validated_vice_name,
-                    vice_captain_phone=validated_vice_phone,
-                    vice_captain_email=validated_vice_email,
-                    vice_captain_whatsapp=validated_vice_whatsapp,
-                    pastor_letter=pastor_url,
-                    payment_receipt=receipt_url,
-                    group_photo=photo_url,
-                    registration_date=datetime.utcnow(),
-                    created_at=datetime.utcnow()
-                )
-                db.add(team)
-                await db.flush()  # persist team into session (no commit yet)
-                
-                # Success - break out of retry loop
-                team_inserted = True
-                logger.info(f"[{request_id}] ✅ Team row inserted successfully with team_id: {team_id}")
-                break
-                
-            except IntegrityError as integrity_err:
-                await db.rollback()
-                logger.warning(f"[{request_id}] ⚠️ IntegrityError on team insert (attempt {db_attempt + 1}): {integrity_err}")
-                
-                # Check if it's a duplicate team_id error
-                if "teams_team_id_key" in str(integrity_err) or "duplicate key" in str(integrity_err).lower():
-                    if db_attempt == MAX_RETRIES - 1:
-                        logger.error(f"[{request_id}] ❌ Failed to insert team after {MAX_RETRIES} retries - duplicate team_id")
-                        
-                        # CLEANUP: Delete orphaned Cloudinary files
-                        uploaded_files = {
-                            "pastor_letter": pastor_url,
-                            "payment_receipt": receipt_url,
-                            "group_photo": photo_url
-                        }
-                        await cleanup_cloudinary_uploads(uploaded_files, team_id, request_id)
-                        
-                        return create_error_response(
-                            ErrorCode.DATABASE_ERROR,
-                            "Unable to generate unique team ID after retries",
-                            {"team_id": team_id, "error": "duplicate_team_id"},
-                            500
-                        )
-                    # Retry with new team_id
-                    continue
-                else:
-                    # Different integrity error - might be duplicate captain/team name
-                    logger.error(f"[{request_id}] ❌ Database integrity error: {integrity_err}")
-                    
-                    # CLEANUP: Delete orphaned Cloudinary files
-                    uploaded_files = {
-                        "pastor_letter": pastor_url,
-                        "payment_receipt": receipt_url,
-                        "group_photo": photo_url
-                    }
-                    await cleanup_cloudinary_uploads(uploaded_files, team_id, request_id)
-                    
-                    # Check for idempotency
-                    if idempotency_key:
-                        existing = await check_idempotency_key(db, idempotency_key)
-                        if existing:
-                            try:
-                                payload = json.loads(existing)
-                                return JSONResponse(status_code=409, content=payload)
-                            except Exception:
-                                pass
-                    return create_error_response(
-                        ErrorCode.DATABASE_ERROR,
-                        "Database integrity constraint violation",
-                        {"error": str(integrity_err)},
-                        500
-                    )
-        
-        if not team_inserted:
-            logger.error(f"[{request_id}] ❌ Failed to insert team after all retries")
-            
-            # CLEANUP: Delete orphaned Cloudinary files
-            uploaded_files = {
-                "pastor_letter": pastor_url,
-                "payment_receipt": receipt_url,
-                "group_photo": photo_url
-            }
-            await cleanup_cloudinary_uploads(uploaded_files, team_id, request_id)
-            
+        logger.info(f"[{request_id}] Checking captain email uniqueness...")
+        from sqlalchemy import select
+        existing_captain = await db.execute(
+            select(Team).where(Team.captain_email == validated_captain_email)
+        )
+        if existing_captain.scalar():
+            logger.warning(f"[{request_id}] ❌ Captain email already registered: {validated_captain_email}")
             return create_error_response(
-                ErrorCode.DATABASE_ERROR,
-                "Failed to insert team after retries",
-                {},
-                500
+                ErrorCode.DUPLICATE_CAPTAIN_EMAIL,
+                "This captain email is already used to register a team",
+                {"email": validated_captain_email},
+                409
             )
-        
-        # After successful team insert, proceed with players
-        try:
 
-            player_count = 0
+        # -------------------------------
+        # GENERATE TEAM ID (ATOMIC, NO RETRY)
+        # -------------------------------
+        logger.info(f"[{request_id}] Generating team ID...")
+        team_id = await generate_next_team_id(db)
+        logger.info(f"[{request_id}] ✅ Generated team_id: {team_id}")
+        
+        # -------------------------------
+        # USE DUMMY FILE URLS FOR TESTING
+        # -------------------------------
+        logger.info(f"[{request_id}] Using dummy URLs for team files (testing)...")
+        
+        # Use dummy CDN URLs instead of uploading to Cloudinary
+        pastor_url = f"https://cdn.example.com/uploads/{team_id}/pastor_letter.pdf"
+        logger.info(f"[{request_id}] ✅ pastor_letter: {pastor_url}")
+        StructuredLogger.log_file_upload(request_id, "pastor_letter", "success", pastor_url)
+
+        # Payment receipt (optional)
+        receipt_url = None
+        if payment_receipt:
+            receipt_url = f"https://cdn.example.com/uploads/{team_id}/payment_receipt.pdf"
+            logger.info(f"[{request_id}] ✅ payment_receipt: {receipt_url}")
+            StructuredLogger.log_file_upload(request_id, "payment_receipt", "success", receipt_url)
+
+        # Group photo (optional)
+        photo_url = None
+        if group_photo:
+            photo_url = f"https://cdn.example.com/uploads/{team_id}/group_photo.png"
+            logger.info(f"[{request_id}] ✅ group_photo: {photo_url}")
+            StructuredLogger.log_file_upload(request_id, "group_photo", "success", photo_url)
+
+        logger.info(f"[{request_id}] ✅ File URL assignments complete")
+        
+        # -------------------------------
+        # INSERT TEAM AND PLAYERS (SINGLE TRANSACTION)
+        # -------------------------------
+        logger.info(f"[{request_id}] Inserting team and players...")
+        
+        try:
+            # Create team
+            team = Team(
+                team_id=team_id,
+                team_name=validated_team_name,
+                church_name=validated_church_name,
+                captain_name=validated_captain_name,
+                captain_phone=validated_captain_phone,
+                captain_email=validated_captain_email,
+                captain_whatsapp=validated_captain_whatsapp,
+                vice_captain_name=validated_vice_name,
+                vice_captain_phone=validated_vice_phone,
+                vice_captain_email=validated_vice_email,
+                vice_captain_whatsapp=validated_vice_whatsapp,
+                pastor_letter=pastor_url,
+                payment_receipt=receipt_url,
+                group_photo=photo_url,
+                registration_date=datetime.utcnow(),
+                created_at=datetime.utcnow()
+            )
+            db.add(team)
+            logger.info(f"[{request_id}] ✅ Team added to session")
+            
+            # Create players
+            player_list = []
             for p in players:
                 player_num = p["index"] + 1
                 player_id = f"{team_id}-P{player_num:02d}"
 
-                # 🔍 DEBUG: Log file status before upload
-                logger.info(f"[{request_id}] 📤 Player {player_num} ({player_id}):")
-                logger.info(f"[{request_id}]   - aadhar_file present: {bool(p['aadhar_file'])}")
-                logger.info(f"[{request_id}]   - subscription_file present: {bool(p['subscription_file'])}")
-
-                # Use dummy URLs for player files (testing)
+                # Use dummy URLs for player files
                 aadhar_url = None
                 subs_url = None
 
                 if p["aadhar_file"]:
-                    # Use dummy CDN URL instead of uploading
                     aadhar_url = f"https://cdn.example.com/uploads/{player_id}/aadhar.pdf"
                     logger.info(f"[{request_id}] ✅ Player {player_num} aadhar: {aadhar_url}")
                     StructuredLogger.log_file_upload(request_id, f"player_{p['index']}_aadhar", "success", aadhar_url)
 
                 if p["subscription_file"]:
-                    # Use dummy CDN URL instead of uploading
                     subs_url = f"https://cdn.example.com/uploads/{player_id}/subscription.pdf"
                     logger.info(f"[{request_id}] ✅ Player {player_num} subscription: {subs_url}")
                     StructuredLogger.log_file_upload(request_id, f"player_{p['index']}_subscription", "success", subs_url)
@@ -502,45 +424,46 @@ async def register_team_production_hardened(
                     subscription_file=subs_url,
                     created_at=datetime.utcnow()
                 )
-                
-                # 🔍 DEBUG: Log what's being saved to database
-                logger.info(f"[{request_id}] 💾 Database record for {player_id}:")
-                logger.info(f"[{request_id}]   - aadhar_file: {aadhar_url[:50] + '...' if aadhar_url else 'NULL'}")
-                logger.info(f"[{request_id}]   - subscription_file: {subs_url[:50] + '...' if subs_url else 'NULL'}")
-                
-                db.add(player)
-                player_count += 1
-
-            # finalize transaction
+                player_list.append(player)
+            
+            db.add_all(player_list)
+            logger.info(f"[{request_id}] ✅ {len(player_list)} players added to session")
+            
+            # Commit transaction
             await db.commit()
+            logger.info(f"[{request_id}] ✅ Transaction committed successfully")
             StructuredLogger.log_db_operation(request_id, "insert", "success", team_id)
-            logger.info(f"[{request_id}] ✅ Database records created (team + {player_count} players)")
 
         except IntegrityError as e:
             await db.rollback()
-            logger.error(f"[{request_id}] IntegrityError after team insert: {e}")
-            # If there's an idempotency record, return it
-            if idempotency_key:
-                existing = await check_idempotency_key(db, idempotency_key)
-                if existing:
-                    try:
-                        payload = json.loads(existing)
-                        return JSONResponse(status_code=409, content=payload)
-                    except Exception:
-                        pass
-
-            if "uq_team_name_captain_phone" in str(e):
-                return create_duplicate_error("team_name/captain_phone", validated_team_name)
-            return create_database_error("insert", str(e))
-
-        except Exception as e:
-            await db.rollback()
-            logger.exception(f"[{request_id}] Database error: {e}")
-            StructuredLogger.log_db_operation(request_id, "insert", "failed", team_id if 'team_id' in locals() else "unknown")
-            return create_database_error("insert", str(e))
+            logger.error(f"[{request_id}] ❌ IntegrityError: {e}")
+            
+            # Handle specific integrity errors
+            if "teams_team_id_key" in str(e):
+                return create_error_response(
+                    ErrorCode.DUPLICATE_TEAM_ID,
+                    "Team ID collision. Please retry.",
+                    {"team_id": team_id},
+                    500
+                )
+            
+            if "captain_email" in str(e).lower() or "uq_team_name_captain_phone" in str(e):
+                return create_error_response(
+                    ErrorCode.DUPLICATE_CAPTAIN_EMAIL,
+                    "Captain email or team name already registered",
+                    {},
+                    409
+                )
+            
+            return create_error_response(
+                ErrorCode.DATABASE_ERROR,
+                "Database error during registration",
+                {"error": str(e)},
+                500
+            )
 
         # -------------------------------
-        # STORE IDEMPOTENCY RESPONSE (without team_id for pending registrations)
+        # STORE IDEMPOTENCY RESPONSE
         # -------------------------------
         if idempotency_key:
             try:
@@ -548,7 +471,7 @@ async def register_team_production_hardened(
                     "success": True,
                     "team_name": validated_team_name,
                     "message": "Registration submitted successfully. Please wait for admin confirmation.",
-                    "player_count": player_count,
+                    "player_count": len(players),
                     "registration_status": "pending"
                 })
                 await store_idempotency_key(db, idempotency_key, payload)
@@ -556,21 +479,21 @@ async def register_team_production_hardened(
                 logger.warning(f"[{request_id}] Failed to store idempotency key: {e}")
 
         # -------------------------------
-        # RETURN SUCCESS (without team_id for pending registrations)
+        # RETURN SUCCESS
         # -------------------------------
-        logger.info(f"[{request_id}] Registration complete (pending confirmation): {team_id}")
+        logger.info(f"[{request_id}] ✅ Registration complete: {team_id}")
         return JSONResponse(
             status_code=201,
             content={
                 "success": True,
                 "team_name": validated_team_name,
                 "message": "Registration submitted successfully. Please wait for admin confirmation.",
-                "player_count": player_count,
+                "player_count": len(players),
                 "registration_status": "pending"
             }
         )
 
     except Exception as e:
-        logger.exception(f"[{request_id}] Unexpected error: {e}")
+        logger.exception(f"[{request_id}] ❌ Unexpected error: {e}")
         StructuredLogger.log_exception(request_id, e)
         return create_internal_error("An unexpected error occurred during registration", {"exception_type": type(e).__name__})

@@ -24,16 +24,10 @@ logger = logging.getLogger(__name__)
 
 async def generate_next_team_id(db: AsyncSession, prefix: str = "ICCT") -> str:
     """
-    Generate next sequential team ID using sequence table with row locking.
+    Generate next sequential team ID using PostgreSQL atomic operation.
     
-    Uses SELECT...FOR UPDATE to ensure atomic operation:
-    1. Lock sequence row (database enforces single reader)
-    2. Read current last_number
-    3. Increment atomically
-    4. Update sequence table
-    5. Lock released when transaction ends
-    
-    This prevents race conditions under ANY concurrent load.
+    Uses UPDATE...RETURNING for race-safe ID generation.
+    No retry needed - operation is atomic and guaranteed unique.
     
     Args:
         db: Async database session
@@ -42,58 +36,30 @@ async def generate_next_team_id(db: AsyncSession, prefix: str = "ICCT") -> str:
     Returns:
         str: Next team ID in format "ICCT-001", "ICCT-002", etc.
     
-    Raises:
-        Exception: If sequence table not initialized
-    
     Example:
-        Sequence: last_number = 5
-        Returns: "ICCT-006"
-        Sequence updated to: last_number = 6
+        First call: "ICCT-001"
+        Second call: "ICCT-002"
     """
     try:
-        # Step 1: LOCK the sequence row with SELECT...FOR UPDATE
-        # This ensures only one transaction can access it at a time
-        logger.debug(f"[Team ID Gen] Acquiring lock on team_sequence row...")
-        
+        # Atomic increment and return
         result = await db.execute(
             text("""
-                SELECT last_number 
-                FROM team_sequence 
-                WHERE id = 1
-                FOR UPDATE
+                UPDATE team_sequence 
+                SET last_number = last_number + 1 
+                WHERE id = 1 
+                RETURNING last_number
             """)
         )
         
         row = result.fetchone()
         if not row:
-            raise Exception("team_sequence table not initialized. Run startup to initialize.")
+            raise Exception("team_sequence table not initialized")
         
-        current_number = row[0]
-        logger.debug(f"[Team ID Gen] Lock acquired. Current number: {current_number}")
-        
-        # Step 2: Increment atomically (while row is locked)
-        next_number = current_number + 1
-        
-        # Step 3: Update sequence table (still locked, atomic operation)
-        logger.debug(f"[Team ID Gen] Updating sequence: {current_number} → {next_number}")
-        
-        await db.execute(
-            text("""
-                UPDATE team_sequence 
-                SET last_number = :next_num,
-                    updated_at = CURRENT_TIMESTAMP
-                WHERE id = 1
-            """),
-            {"next_num": next_number}
-        )
-        
-        # Step 4: Generate and return formatted ID
+        next_number = row[0]
         team_id = f"{prefix}-{next_number:03d}"
-        logger.info(f"✅ Generated team ID: {team_id} (sequence: {current_number} → {next_number})")
         
+        logger.info(f"[Team ID Gen] ✅ Generated team ID: {team_id}")
         return team_id
-        # Lock is automatically released when transaction ends
-        # (either COMMIT or ROLLBACK)
         
     except IntegrityError as e:
         logger.error(f"❌ IntegrityError during team ID generation: {e}")
@@ -101,39 +67,6 @@ async def generate_next_team_id(db: AsyncSession, prefix: str = "ICCT") -> str:
     except Exception as e:
         logger.error(f"❌ Failed to generate team ID: {e}")
         raise
-
-
-async def generate_next_team_id_with_retry(db: AsyncSession, max_retries: int = 5) -> str:
-    """
-    Generate team ID with retry logic.
-    
-    Retries if temporary database errors occur.
-    
-    Args:
-        db: Async database session
-        max_retries: Maximum retry attempts
-    
-    Returns:
-        str: Next team ID
-    
-    Raises:
-        Exception: If fails after max retries
-    """
-    for attempt in range(max_retries):
-        try:
-            return await generate_next_team_id(db)
-        except Exception as e:
-            await db.rollback()
-            logger.warning(f"Team ID generation attempt {attempt + 1} failed: {e}")
-            
-            if attempt == max_retries - 1:
-                logger.error(f"❌ Team ID generation failed after {max_retries} retries")
-                raise
-            
-            # Small delay before retry
-            delay = 0.1 * (attempt + 1)
-            logger.info(f"Retrying in {delay}s...")
-            await asyncio.sleep(delay)
 
 
 async def get_current_sequence_number(db: AsyncSession) -> int:
@@ -222,6 +155,7 @@ async def sync_sequence_with_teams(db: AsyncSession) -> bool:
             logger.warning(f"⚠️ Sequence out of sync! Max team: ICCT-{max_team_num:03d}, Sequence: {current_seq}")
             logger.warning(f"Correcting sequence to {max_team_num}...")
             
+            # Use the first reset_sequence function that commits
             await reset_sequence(db, max_team_num)
             logger.info(f"✅ Sequence synced: {max_team_num}")
             return True
@@ -232,48 +166,3 @@ async def sync_sequence_with_teams(db: AsyncSession) -> bool:
     except Exception as e:
         logger.error(f"❌ Failed to sync sequence: {e}")
         return False
-
-
-async def get_current_sequence_number(db: AsyncSession) -> int:
-    """
-    Get current sequence number (for testing/debugging).
-    
-    Args:
-        db: Async database session
-    
-    Returns:
-        int: Current last_number value
-    """
-    try:
-        result = await db.execute(select(TeamSequence).where(TeamSequence.id == 1))
-        sequence = result.scalar_one_or_none()
-        return sequence.last_number if sequence else 0
-    except Exception as e:
-        logger.error(f"❌ Failed to get current sequence: {e}")
-        return 0
-
-
-async def reset_sequence(db: AsyncSession, start_number: int = 0) -> None:
-    """
-    Reset sequence to specific number (admin use only).
-    
-    Args:
-        db: Async database session
-        start_number: Number to reset to
-    """
-    try:
-        async with db.begin_nested():
-            stmt = select(TeamSequence).where(TeamSequence.id == 1).with_for_update()
-            result = await db.execute(stmt)
-            sequence = result.scalar_one_or_none()
-            
-            if sequence:
-                sequence.last_number = start_number
-                await db.flush()
-                logger.warning(f"⚠️ Team sequence reset to {start_number}")
-            else:
-                logger.error("❌ Cannot reset: sequence not initialized")
-                
-    except Exception as e:
-        logger.error(f"❌ Failed to reset sequence: {e}")
-        raise
