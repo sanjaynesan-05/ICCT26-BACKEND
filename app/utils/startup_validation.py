@@ -116,7 +116,65 @@ async def validate_database_schema(db: AsyncSession) -> dict:
         results["valid"] = False
         logger.error(f"❌ {error}")
     
-    # Check 3: team_sequence table exists
+    # Check 4: Verify teams.team_id has UNIQUE constraint
+    try:
+        query = text("""
+            SELECT tc.constraint_name, tc.constraint_type
+            FROM information_schema.table_constraints tc
+            JOIN information_schema.key_column_usage kcu 
+                ON tc.constraint_name = kcu.constraint_name
+            WHERE tc.table_name = 'teams' 
+                AND kcu.column_name = 'team_id'
+                AND tc.constraint_type = 'UNIQUE'
+        """)
+        result = await db.execute(query)
+        constraints = result.fetchall()
+        
+        if len(constraints) > 0:
+            results["checks"].append({
+                "check": "teams.team_id UNIQUE constraint",
+                "status": "✅ PASS",
+                "details": f"UNIQUE constraint exists (prevents duplicate ICCT-XXX)"
+            })
+            logger.info("✅ teams.team_id has UNIQUE constraint - duplicate team_id prevented")
+        else:
+            warning = "teams.team_id may not have UNIQUE constraint - duplicate IDs possible"
+            results["warnings"].append(warning)
+            results["checks"].append({
+                "check": "teams.team_id UNIQUE constraint",
+                "status": "⚠️ WARNING",
+                "details": warning
+            })
+            logger.warning(f"⚠️ {warning}")
+            
+    except Exception as e:
+        error = f"Failed to check team_id UNIQUE constraint: {str(e)}"
+        results["warnings"].append(error)
+        logger.warning(f"⚠️ {error}")
+    
+    # Check 5: Verify generate_next_team_id function exists
+    try:
+        from app.utils.race_safe_team_id import generate_next_team_id
+        
+        results["checks"].append({
+            "check": "generate_next_team_id() function exists",
+            "status": "✅ PASS",
+            "details": "Team ID generation function available"
+        })
+        logger.info("✅ generate_next_team_id() function exists")
+        
+    except ImportError as e:
+        error = "generate_next_team_id() function not found - team registration will fail"
+        results["errors"].append(error)
+        results["valid"] = False
+        results["checks"].append({
+            "check": "generate_next_team_id() function exists",
+            "status": "❌ FAIL",
+            "details": error
+        })
+        logger.error(f"❌ {error}")
+    
+    # Check 6: team_sequence table exists (legacy check - now optional)
     try:
         query = text("""
             SELECT table_name 

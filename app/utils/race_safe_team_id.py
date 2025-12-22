@@ -1,133 +1,81 @@
 """
-Race-Safe Sequential Team ID Generator - ICCT26
-================================================
-Database-backed team ID generation with concurrency protection.
-Uses SELECT FOR UPDATE to prevent race conditions.
+Database-Truth Team ID Generator - ICCT26
+==========================================
+Generates sequential team IDs based on actual teams table data.
+No separate sequence table - database is the single source of truth.
 
 Features:
-- Atomic ID generation
-- No duplicate IDs under concurrent requests
-- Transaction-safe
+- Database-derived ID generation
+- Retry-safe with IntegrityError handling
+- Works under concurrent requests
+- Survives server restarts and redeployments
 - Format: ICCT-001, ICCT-002, etc.
 """
 
 import logging
-from sqlalchemy import Column, Integer, String, select, text
+from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import declarative_base
 
 logger = logging.getLogger(__name__)
-Base = declarative_base()
-
-
-class TeamSequence(Base):
-    """
-    Dedicated table for tracking sequential team IDs.
-    Single row with last used number.
-    """
-    __tablename__ = "team_sequence"
-    
-    id = Column(Integer, primary_key=True, default=1)
-    last_number = Column(Integer, nullable=False, default=0)
-    prefix = Column(String(10), nullable=False, default="ICCT")
-
-
-async def initialize_team_sequence(db: AsyncSession) -> None:
-    """
-    Initialize team_sequence table if it doesn't exist.
-    Should be called on application startup.
-    """
-    try:
-        # Create table if not exists
-        from database import async_engine
-        async with async_engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-        
-        # Check if sequence row exists, if not create it
-        result = await db.execute(select(TeamSequence).where(TeamSequence.id == 1))
-        sequence = result.scalar_one_or_none()
-        
-        if not sequence:
-            sequence = TeamSequence(id=1, last_number=0, prefix="ICCT")
-            db.add(sequence)
-            await db.commit()
-            logger.info("✅ Team sequence initialized with starting value 0")
-        else:
-            logger.info(f"✅ Team sequence already initialized at {sequence.last_number}")
-            
-    except Exception as e:
-        logger.error(f"❌ Failed to initialize team sequence: {e}")
-        raise
 
 
 async def generate_next_team_id(db: AsyncSession, prefix: str = "ICCT") -> str:
     """
-    Generate next sequential team ID with race condition protection.
+    Generate next sequential team ID based on database truth.
     
-    Uses raw SQL with database-level locking.
-    Guarantees no duplicate IDs even under high concurrency.
+    Queries the teams table for the last team_id and increments.
+    This is the ONLY source of truth - no separate sequence table.
     
     Args:
-        db: Async database session (must not be in a transaction)
+        db: Async database session
         prefix: Team ID prefix (default: "ICCT")
     
     Returns:
         str: Next team ID in format "ICCT-001", "ICCT-002", etc.
     
-    Raises:
-        Exception: If database operation fails
+    Example:
+        If last team_id in database is "ICCT-005", returns "ICCT-006"
+        If no teams exist, returns "ICCT-001"
     """
-    max_retries = 3
-    retry_count = 0
-    
-    while retry_count < max_retries:
-        try:
-            # Ensure table exists with initial row
-            await db.execute(text("""
-                CREATE TABLE IF NOT EXISTS team_sequence (
-                    id INTEGER PRIMARY KEY,
-                    last_number INTEGER NOT NULL DEFAULT 0
-                )
-            """))
-            
-            # Ensure initial row exists
-            await db.execute(text("""
-                INSERT INTO team_sequence (id, last_number)
-                VALUES (1, 0)
-                ON CONFLICT (id) DO NOTHING
-            """))
-            
-            # Lock and increment - database-level atomic operation
-            result = await db.execute(text("""
-                UPDATE team_sequence 
-                SET last_number = last_number + 1 
-                WHERE id = 1 
-                RETURNING last_number
-            """))
-            
-            row = result.fetchone()
-            if not row:
-                raise Exception("Failed to update sequence")
-            
-            next_number = row[0]
-            team_id = f"{prefix}-{next_number:03d}"
-            
-            logger.info(f"✅ Generated team ID: {team_id}")
+    try:
+        from models import Team
+        
+        # Query database for the last team_id (by creation time)
+        result = await db.execute(
+            select(Team.team_id)
+            .order_by(desc(Team.created_at))
+            .limit(1)
+        )
+        
+        last_team_id = result.scalar_one_or_none()
+        
+        if not last_team_id:
+            # No teams exist yet - start with 001
+            team_id = f"{prefix}-001"
+            logger.info(f"✅ Generated first team ID: {team_id}")
             return team_id
-                
-        except Exception as e:
-            retry_count += 1
-            logger.warning(f"⚠️ Team ID generation attempt {retry_count} failed: {e}")
-            
-            if retry_count >= max_retries:
-                logger.error(f"❌ Team ID generation failed after {max_retries} retries: {e}")
-                raise Exception(f"Failed to generate team ID after {max_retries} retries: {str(e)}")
-            
-            # Small delay before retry
-            import asyncio
-            await asyncio.sleep(0.1 * retry_count)
-    
-    raise Exception("Failed to generate team ID after all retries")
+        
+        # Extract number from last team_id (e.g., "ICCT-005" -> 5)
+        try:
+            last_number = int(last_team_id.split("-")[1])
+        except (IndexError, ValueError) as e:
+            logger.error(f"❌ Failed to parse last team_id '{last_team_id}': {e}")
+            # Fallback: count all teams and add 1
+            from sqlalchemy import func
+            count_result = await db.execute(select(func.count()).select_from(Team))
+            count = count_result.scalar()
+            last_number = count
+        
+        # Increment and format
+        next_number = last_number + 1
+        team_id = f"{prefix}-{next_number:03d}"
+        
+        logger.info(f"✅ Generated team ID: {team_id} (previous: {last_team_id})")
+        return team_id
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to generate team ID: {e}")
+        raise
 
 
 async def get_current_sequence_number(db: AsyncSession) -> int:

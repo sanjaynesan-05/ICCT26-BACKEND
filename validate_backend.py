@@ -107,8 +107,8 @@ async def main():
     
     print()
     
-    # Check 4: Team ID Generation
-    print("📋 CHECK 4: Team ID Generation (Race-Safe)")
+    # Check 4: Team ID Generation (Database-Truth)
+    print("📋 CHECK 4: Team ID Generation (Database-Truth)")
     print("-" * 70)
     try:
         from app.utils.race_safe_team_id import generate_next_team_id
@@ -121,20 +121,27 @@ async def main():
         )
         
         async with AsyncSessionLocal() as db:
-            # Get current sequence value
-            from sqlalchemy import text
-            result = await db.execute(text("SELECT last_number FROM team_sequence WHERE id = 1"))
-            row = result.first()
+            # Get current count of teams
+            from sqlalchemy import text, func
+            from models import Team
             
-            if row:
-                current_number = row[0]
-                expected_next = f"ICCT-{current_number + 1:03d}"
-                print(f"✅ PASS: Team sequence initialized")
-                print(f"  ✅ Current last_number: {current_number}")
-                print(f"  ✅ Next team ID will be: {expected_next}")
-            else:
-                print("❌ FAIL: team_sequence table not initialized")
-                all_passed = False
+            result = await db.execute(text("SELECT COUNT(*) FROM teams"))
+            team_count = result.scalar()
+            
+            # Get last team_id
+            result2 = await db.execute(
+                text("SELECT team_id FROM teams ORDER BY created_at DESC LIMIT 1")
+            )
+            last_team = result2.scalar_one_or_none()
+            
+            # Generate next team_id (database-truth based)
+            next_team_id = await generate_next_team_id(db)
+            
+            print(f"✅ PASS: Team ID generation (database-truth)")
+            print(f"  ✅ Total teams in database: {team_count}")
+            print(f"  ✅ Last team_id: {last_team if last_team else 'None (first team)'}")
+            print(f"  ✅ Next team_id will be: {next_team_id}")
+            print(f"  ✅ Generation method: Query teams table (no sequence table)")
     
     except Exception as e:
         print(f"❌ FAIL: Error checking team ID generation: {e}")

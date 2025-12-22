@@ -236,15 +236,30 @@ async def register_team_production_hardened(
         logger.info(f"[{request_id}] ✅ Players detected: {len(players)}")
 
         # -------------------------------
-        # GENERATE TEAM ID
+        # GENERATE TEAM ID WITH RETRY LOGIC
         # -------------------------------
-        logger.info(f"[{request_id}] Generating team id...")
-        try:
-            team_id = await generate_next_team_id(db)
-            logger.info(f"[{request_id}] Generated team_id: {team_id}")
-        except Exception as e:
-            logger.exception(f"[{request_id}] Failed to generate team id: {e}")
-            return create_error_response(ErrorCode.TEAM_ID_GENERATION_FAILED, "Team id generation failed", {"error": str(e)}, 500)
+        logger.info(f"[{request_id}] Generating team id with retry-safe logic...")
+        team_id = None
+        MAX_RETRIES = 5
+        
+        for attempt in range(MAX_RETRIES):
+            try:
+                team_id = await generate_next_team_id(db)
+                logger.info(f"[{request_id}] Generated team_id: {team_id} (attempt {attempt + 1})")
+                break  # Success - exit retry loop
+            except Exception as e:
+                logger.warning(f"[{request_id}] Team ID generation attempt {attempt + 1} failed: {e}")
+                if attempt == MAX_RETRIES - 1:
+                    logger.exception(f"[{request_id}] Failed to generate team id after {MAX_RETRIES} retries")
+                    return create_error_response(
+                        ErrorCode.TEAM_ID_GENERATION_FAILED, 
+                        "Unable to generate unique team ID after retries", 
+                        {"error": str(e)}, 
+                        500
+                    )
+                # Small delay before retry
+                import asyncio
+                await asyncio.sleep(0.1 * (attempt + 1))
 
         # -------------------------------
         # UPLOAD TEAM FILES TO CLOUDINARY (PENDING FOLDER)
@@ -304,30 +319,91 @@ async def register_team_production_hardened(
             return create_upload_error("pastor_letter", getattr(e, "retry_count", None))
 
         # -------------------------------
-        # CREATE DATABASE RECORDS (atomic)
+        # CREATE DATABASE RECORDS WITH RETRY LOGIC
         # -------------------------------
-        logger.info(f"[{request_id}] Creating database records (team + players)...")
-        try:
-            team = Team(
-                team_id=team_id,
-                team_name=validated_team_name,
-                church_name=validated_church_name,
-                captain_name=validated_captain_name,
-                captain_phone=validated_captain_phone,
-                captain_email=validated_captain_email,
-                captain_whatsapp=validated_captain_whatsapp,
-                vice_captain_name=validated_vice_name,
-                vice_captain_phone=validated_vice_phone,
-                vice_captain_email=validated_vice_email,
-                vice_captain_whatsapp=validated_vice_whatsapp,
-                pastor_letter=pastor_url,
-                payment_receipt=receipt_url,
-                group_photo=photo_url,
-                registration_date=datetime.utcnow(),
-                created_at=datetime.utcnow()
+        logger.info(f"[{request_id}] Creating database records (team + players) with retry-safe logic...")
+        
+        # Retry loop for team insertion to handle duplicate team_id
+        team_inserted = False
+        for db_attempt in range(MAX_RETRIES):
+            try:
+                # If this is a retry, regenerate team_id
+                if db_attempt > 0:
+                    team_id = await generate_next_team_id(db)
+                    logger.info(f"[{request_id}] Retry {db_attempt + 1}: Regenerated team_id: {team_id}")
+                
+                team = Team(
+                    team_id=team_id,
+                    team_name=validated_team_name,
+                    church_name=validated_church_name,
+                    captain_name=validated_captain_name,
+                    captain_phone=validated_captain_phone,
+                    captain_email=validated_captain_email,
+                    captain_whatsapp=validated_captain_whatsapp,
+                    vice_captain_name=validated_vice_name,
+                    vice_captain_phone=validated_vice_phone,
+                    vice_captain_email=validated_vice_email,
+                    vice_captain_whatsapp=validated_vice_whatsapp,
+                    pastor_letter=pastor_url,
+                    payment_receipt=receipt_url,
+                    group_photo=photo_url,
+                    registration_date=datetime.utcnow(),
+                    created_at=datetime.utcnow()
+                )
+                db.add(team)
+                await db.flush()  # persist team into session (no commit yet)
+                
+                # Success - break out of retry loop
+                team_inserted = True
+                logger.info(f"[{request_id}] ✅ Team row inserted successfully with team_id: {team_id}")
+                break
+                
+            except IntegrityError as integrity_err:
+                await db.rollback()
+                logger.warning(f"[{request_id}] ⚠️ IntegrityError on team insert (attempt {db_attempt + 1}): {integrity_err}")
+                
+                # Check if it's a duplicate team_id error
+                if "teams_team_id_key" in str(integrity_err) or "duplicate key" in str(integrity_err).lower():
+                    if db_attempt == MAX_RETRIES - 1:
+                        logger.error(f"[{request_id}] ❌ Failed to insert team after {MAX_RETRIES} retries - duplicate team_id")
+                        return create_error_response(
+                            ErrorCode.DATABASE_ERROR,
+                            "Unable to generate unique team ID after retries",
+                            {"team_id": team_id, "error": "duplicate_team_id"},
+                            500
+                        )
+                    # Retry with new team_id
+                    continue
+                else:
+                    # Different integrity error - might be duplicate captain/team name
+                    logger.error(f"[{request_id}] ❌ Database integrity error: {integrity_err}")
+                    # Check for idempotency
+                    if idempotency_key:
+                        existing = await check_idempotency_key(db, idempotency_key)
+                        if existing:
+                            try:
+                                payload = json.loads(existing)
+                                return JSONResponse(status_code=409, content=payload)
+                            except Exception:
+                                pass
+                    return create_error_response(
+                        ErrorCode.DATABASE_ERROR,
+                        "Database integrity constraint violation",
+                        {"error": str(integrity_err)},
+                        500
+                    )
+        
+        if not team_inserted:
+            logger.error(f"[{request_id}] ❌ Failed to insert team after all retries")
+            return create_error_response(
+                ErrorCode.DATABASE_ERROR,
+                "Failed to insert team after retries",
+                {},
+                500
             )
-            db.add(team)
-            await db.flush()  # persist team into session (no commit yet)
+        
+        # After successful team insert, proceed with players
+        try:
 
             player_count = 0
             for p in players:
@@ -390,7 +466,7 @@ async def register_team_production_hardened(
 
         except IntegrityError as e:
             await db.rollback()
-            logger.error(f"[{request_id}] IntegrityError on insert: {e}")
+            logger.error(f"[{request_id}] IntegrityError after team insert: {e}")
             # If there's an idempotency record, return it
             if idempotency_key:
                 existing = await check_idempotency_key(db, idempotency_key)
