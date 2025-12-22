@@ -30,6 +30,10 @@ class Settings(BaseSettings):
     DATABASE_POOL_RECYCLE: int = Field(default=3600, description="Pool recycle time in seconds")
     DATABASE_ECHO: bool = Field(default=False, description="Echo SQL queries (for debugging)")
     
+    # ============= RETRY CONFIGURATION =============
+    MAX_RETRIES: int = Field(default=3, description="Maximum retry attempts for database operations")
+    RETRY_DELAY: float = Field(default=0.1, description="Initial delay between retries in seconds")
+    
     # ============= CLOUDINARY CONFIGURATION =============
     CLOUDINARY_CLOUD_NAME: str = Field(default="demo", description="Cloudinary cloud name")
     CLOUDINARY_API_KEY: str = Field(default="", description="Cloudinary API key")

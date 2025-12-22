@@ -16,7 +16,7 @@ from database import get_db_async
 from models import Team, Player
 
 # Utilities (assumes these exist in your project)
-from app.utils.race_safe_team_id import generate_next_team_id_with_retry
+from app.utils.race_safe_team_id import generate_next_team_id
 from config.settings import settings
 from app.utils.validation import (
     validate_name,
@@ -318,92 +318,89 @@ async def register_team_production_hardened(
         logger.info(f"[{request_id}] ✅ Players detected: {len(players)}")
 
         # -------------------------------
-        # GENERATE TEAM ID WITH SEQUENCE TABLE (ATOMIC WITH FOR UPDATE)
-        # -------------------------------
-        logger.info(f"[{request_id}] Generating team id using sequence table (FOR UPDATE locking)...")
-        try:
-            team_id = await generate_next_team_id_with_retry(db, max_retries=5)
-            logger.info(f"[{request_id}] ✅ Generated team_id: {team_id}")
-        except Exception as e:
-            logger.exception(f"[{request_id}] ❌ Failed to generate team id: {e}")
-            return create_error_response(
-                ErrorCode.TEAM_ID_GENERATION_FAILED, 
-                "Unable to generate unique team ID", 
-                {"error": str(e)}, 
-                500
-            )
-
-        # -------------------------------
-        # UPLOAD TEAM FILES TO CLOUDINARY (PENDING FOLDER)
-        # -------------------------------
-        logger.info(f"[{request_id}] Uploading team files to Cloudinary /pending/{team_id}/...")
-        try:
-            # Upload pastor letter to pending
-            pastor_content = await pastor_letter.read()
-            pastor_url = await cloudinary_uploader.upload_pending_file(
-                file_content=pastor_content,
-                team_id=team_id,
-                file_field_name="pastor_letter",
-                original_filename=pastor_letter.filename
-            )
-            if pastor_url:
-                StructuredLogger.log_file_upload(request_id, "pastor_letter", "success", pastor_url)
-            else:
-                raise CloudinaryUploadError("Pastor letter upload failed")
-
-            # Upload payment receipt to pending (optional)
-            receipt_url = None
-            if payment_receipt:
-                try:
-                    receipt_content = await payment_receipt.read()
-                    receipt_url = await cloudinary_uploader.upload_pending_file(
-                        file_content=receipt_content,
-                        team_id=team_id,
-                        file_field_name="payment_receipt",
-                        original_filename=payment_receipt.filename
-                    )
-                    if receipt_url:
-                        StructuredLogger.log_file_upload(request_id, "payment_receipt", "success", receipt_url)
-                except Exception as e:
-                    logger.warning(f"[{request_id}] payment_receipt upload failed (optional): {e}")
-                    StructuredLogger.log_file_upload(request_id, "payment_receipt", "failed")
-
-            # Upload group photo to pending (optional)
-            photo_url = None
-            if group_photo:
-                try:
-                    photo_content = await group_photo.read()
-                    photo_url = await cloudinary_uploader.upload_pending_file(
-                        file_content=photo_content,
-                        team_id=team_id,
-                        file_field_name="group_photo",
-                        original_filename=group_photo.filename
-                    )
-                    if photo_url:
-                        StructuredLogger.log_file_upload(request_id, "group_photo", "success", photo_url)
-                except Exception as e:
-                    logger.warning(f"[{request_id}] group_photo upload failed (optional): {e}")
-                    StructuredLogger.log_file_upload(request_id, "group_photo", "failed")
-
-            logger.info(f"[{request_id}] ✅ Team file uploads complete (stored in pending folder)")
-        except CloudinaryUploadError as e:
-            logger.error(f"[{request_id}] Required upload failed: {e}")
-            return create_upload_error("pastor_letter", getattr(e, "retry_count", None))
-
-        # -------------------------------
         # CREATE DATABASE RECORDS WITH RETRY LOGIC
         # -------------------------------
         logger.info(f"[{request_id}] Creating database records (team + players) with retry-safe logic...")
         
         # Retry loop for team insertion to handle duplicate team_id
         team_inserted = False
+        team_id = None  # Initialize team_id
+        pastor_url = None
+        receipt_url = None
+        photo_url = None
+        
         for db_attempt in range(MAX_RETRIES):
             try:
-                # If this is a retry, regenerate team_id
-                if db_attempt > 0:
-                    team_id = await generate_next_team_id(db)
-                    logger.info(f"[{request_id}] Retry {db_attempt + 1}: Regenerated team_id: {team_id}")
+                # Generate new team_id for each attempt (including first)
+                team_id = await generate_next_team_id(db)
+                logger.info(f"[{request_id}] Attempt {db_attempt + 1}/{MAX_RETRIES}: Generated team_id: {team_id}")
                 
+                # -------------------------------
+                # UPLOAD TEAM FILES TO CLOUDINARY (PENDING FOLDER)
+                # -------------------------------
+                logger.info(f"[{request_id}] Uploading team files to Cloudinary /pending/{team_id}/...")
+                try:
+                    # Upload pastor letter to pending
+                    pastor_letter.file.seek(0)  # Reset file pointer for retries
+                    pastor_content = await pastor_letter.read()
+                    pastor_url = await cloudinary_uploader.upload_pending_file(
+                        file_content=pastor_content,
+                        team_id=team_id,
+                        file_field_name="pastor_letter",
+                        original_filename=pastor_letter.filename
+                    )
+                    if pastor_url:
+                        StructuredLogger.log_file_upload(request_id, "pastor_letter", "success", pastor_url)
+                    else:
+                        raise CloudinaryUploadError("Pastor letter upload failed")
+
+                    # Upload payment receipt to pending (optional)
+                    if payment_receipt:
+                        try:
+                            payment_receipt.file.seek(0)  # Reset file pointer
+                            receipt_content = await payment_receipt.read()
+                            receipt_url = await cloudinary_uploader.upload_pending_file(
+                                file_content=receipt_content,
+                                team_id=team_id,
+                                file_field_name="payment_receipt",
+                                original_filename=payment_receipt.filename
+                            )
+                            if receipt_url:
+                                StructuredLogger.log_file_upload(request_id, "payment_receipt", "success", receipt_url)
+                        except Exception as e:
+                            logger.warning(f"[{request_id}] payment_receipt upload failed (optional): {e}")
+                            StructuredLogger.log_file_upload(request_id, "payment_receipt", "failed")
+                            receipt_url = None
+
+                    # Upload group photo to pending (optional)
+                    if group_photo:
+                        try:
+                            group_photo.file.seek(0)  # Reset file pointer
+                            photo_content = await group_photo.read()
+                            photo_url = await cloudinary_uploader.upload_pending_file(
+                                file_content=photo_content,
+                                team_id=team_id,
+                                file_field_name="group_photo",
+                                original_filename=group_photo.filename
+                            )
+                            if photo_url:
+                                StructuredLogger.log_file_upload(request_id, "group_photo", "success", photo_url)
+                        except Exception as e:
+                            logger.warning(f"[{request_id}] group_photo upload failed (optional): {e}")
+                            StructuredLogger.log_file_upload(request_id, "group_photo", "failed")
+                            photo_url = None
+
+                    logger.info(f"[{request_id}] ✅ Team file uploads complete (stored in pending folder)")
+                except CloudinaryUploadError as e:
+                    logger.error(f"[{request_id}] Required upload failed: {e}")
+                    await db.rollback()
+                    if db_attempt == MAX_RETRIES - 1:
+                        return create_upload_error("pastor_letter", getattr(e, "retry_count", None))
+                    continue
+                
+                # -------------------------------
+                # INSERT TEAM INTO DATABASE
+                # -------------------------------
                 team = Team(
                     team_id=team_id,
                     team_name=validated_team_name,

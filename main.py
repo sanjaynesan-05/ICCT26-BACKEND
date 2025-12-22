@@ -276,6 +276,20 @@ async def startup_event():
         except Exception as hardening_err:
             logger.warning(f"⚠️ Production hardening table creation failed: {hardening_err}")
         
+        # 🔥 SYNC TEAM SEQUENCE WITH EXISTING TEAMS
+        logger.info("🔄 Syncing team_sequence with existing teams...")
+        try:
+            from app.utils.race_safe_team_id import sync_sequence_with_teams
+            async with AsyncSessionLocal() as db:
+                sync_result = await sync_sequence_with_teams(db)
+                if sync_result:
+                    logger.info("✅ Team sequence synchronized with database")
+                else:
+                    logger.warning("⚠️ Team sequence sync completed with warnings")
+        except Exception as sync_err:
+            logger.error(f"❌ Team sequence sync failed: {sync_err}")
+            # Don't fail startup, just log the error
+        
         # 🔥 STARTUP VALIDATION: Check database schema and configuration
         logger.info("=" * 60)
         logger.info("🔍 RUNNING STARTUP VALIDATION CHECKS")
