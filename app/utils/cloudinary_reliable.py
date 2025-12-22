@@ -35,8 +35,10 @@ class CloudinaryUploadError(Exception):
 async def upload_with_retry(
     file: UploadFile,
     folder: str,
+    public_id: Optional[str] = None,
     max_retries: int = 3,
-    initial_delay: float = 0.5
+    initial_delay: float = 0.5,
+    resource_type: str = "auto"
 ) -> str:
     """
     Upload file to Cloudinary with exponential backoff retry logic.
@@ -44,8 +46,10 @@ async def upload_with_retry(
     Args:
         file: File to upload
         folder: Cloudinary folder path
+        public_id: Custom public ID for the file (optional)
         max_retries: Maximum retry attempts (default 3)
         initial_delay: Initial retry delay in seconds (default 0.5s)
+        resource_type: Resource type (default "auto")
     
     Returns:
         str: Secure URL of uploaded file
@@ -61,7 +65,7 @@ async def upload_with_retry(
             logger.info(f"📤 Uploading to Cloudinary (attempt {retry_count + 1}/{max_retries + 1}): {folder}")
             
             # Upload in thread pool to avoid blocking
-            secure_url = await _upload_sync_in_executor(file, folder)
+            secure_url = await _upload_sync_in_executor(file, folder, public_id, resource_type)
             
             logger.info(f"✅ Upload successful: {secure_url[:50]}...")
             return secure_url
@@ -94,13 +98,20 @@ async def upload_with_retry(
     raise CloudinaryUploadError(error_msg, max_retries + 1)
 
 
-async def _upload_sync_in_executor(file: UploadFile, folder: str) -> str:
+async def _upload_sync_in_executor(
+    file: UploadFile, 
+    folder: str, 
+    public_id: Optional[str] = None,
+    resource_type: str = "auto"
+) -> str:
     """
     Execute synchronous Cloudinary upload in thread pool.
     
     Args:
         file: File to upload
         folder: Cloudinary folder
+        public_id: Custom public ID (optional)
+        resource_type: Resource type
     
     Returns:
         str: Secure URL
@@ -111,14 +122,23 @@ async def _upload_sync_in_executor(file: UploadFile, folder: str) -> str:
             # Reset file pointer
             file.file.seek(0)
             
+            # Build upload parameters
+            upload_params = {
+                "folder": folder,
+                "resource_type": resource_type,
+                "timeout": 30
+            }
+            
+            if public_id:
+                upload_params["public_id"] = public_id
+            else:
+                upload_params["use_filename"] = True
+                upload_params["unique_filename"] = True
+            
             # Upload to Cloudinary
             result = cloudinary.uploader.upload(
                 file.file,
-                folder=folder,
-                resource_type="auto",
-                use_filename=True,
-                unique_filename=True,
-                timeout=30  # 30 second timeout
+                **upload_params
             )
             
             return result["secure_url"]
