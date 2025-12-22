@@ -342,30 +342,75 @@ async def register_team_production_hardened(
         logger.info(f"[{request_id}] ✅ Generated team_id: {team_id}")
         
         # -------------------------------
-        # USE DUMMY FILE URLS FOR TESTING
+        # CHECK CLOUDINARY CONFIGURATION
         # -------------------------------
-        logger.info(f"[{request_id}] Using dummy URLs for team files (testing)...")
+        if not settings.CLOUDINARY_ENABLED:
+            logger.error(f"[{request_id}] ❌ CLOUDINARY NOT CONFIGURED!")
+            logger.error(f"[{request_id}] Please set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET in .env file")
+            logger.error(f"[{request_id}] See docs/CLOUDINARY_SETUP.md for instructions")
+            return create_error_response(
+                ErrorCode.VALIDATION_ERROR,
+                "File upload service not configured. Please contact administrator.",
+                {"error": "Cloudinary credentials missing"},
+                503
+            )
         
-        # Use dummy CDN URLs instead of uploading to Cloudinary
-        pastor_url = f"https://cdn.example.com/uploads/{team_id}/pastor_letter.pdf"
-        logger.info(f"[{request_id}] ✅ pastor_letter: {pastor_url}")
-        StructuredLogger.log_file_upload(request_id, "pastor_letter", "success", pastor_url)
+        # -------------------------------
+        # UPLOAD TEAM FILES TO CLOUDINARY
+        # -------------------------------
+        logger.info(f"[{request_id}] Uploading team files to Cloudinary...")
+        uploaded_urls = {}
+        
+        try:
+            # Upload pastor letter (required)
+            logger.info(f"[{request_id}] Uploading pastor_letter...")
+            pastor_url = await upload_with_retry(
+                pastor_letter,
+                folder=f"pending/{team_id}",
+                public_id=f"{team_id}_pastor_letter",
+                resource_type="auto"
+            )
+            uploaded_urls["pastor_letter"] = pastor_url
+            logger.info(f"[{request_id}] ✅ pastor_letter: {pastor_url}")
+            StructuredLogger.log_file_upload(request_id, "pastor_letter", "success", pastor_url)
 
-        # Payment receipt (optional)
-        receipt_url = None
-        if payment_receipt:
-            receipt_url = f"https://cdn.example.com/uploads/{team_id}/payment_receipt.pdf"
-            logger.info(f"[{request_id}] ✅ payment_receipt: {receipt_url}")
-            StructuredLogger.log_file_upload(request_id, "payment_receipt", "success", receipt_url)
+            # Upload payment receipt (optional)
+            receipt_url = None
+            if payment_receipt:
+                logger.info(f"[{request_id}] Uploading payment_receipt...")
+                receipt_url = await upload_with_retry(
+                    payment_receipt,
+                    folder=f"pending/{team_id}",
+                    public_id=f"{team_id}_payment_receipt",
+                    resource_type="auto"
+                )
+                uploaded_urls["payment_receipt"] = receipt_url
+                logger.info(f"[{request_id}] ✅ payment_receipt: {receipt_url}")
+                StructuredLogger.log_file_upload(request_id, "payment_receipt", "success", receipt_url)
 
-        # Group photo (optional)
-        photo_url = None
-        if group_photo:
-            photo_url = f"https://cdn.example.com/uploads/{team_id}/group_photo.png"
-            logger.info(f"[{request_id}] ✅ group_photo: {photo_url}")
-            StructuredLogger.log_file_upload(request_id, "group_photo", "success", photo_url)
+            # Upload group photo (optional)
+            photo_url = None
+            if group_photo:
+                logger.info(f"[{request_id}] Uploading group_photo...")
+                photo_url = await upload_with_retry(
+                    group_photo,
+                    folder=f"pending/{team_id}",
+                    public_id=f"{team_id}_group_photo",
+                    resource_type="auto"
+                )
+                uploaded_urls["group_photo"] = photo_url
+                logger.info(f"[{request_id}] ✅ group_photo: {photo_url}")
+                StructuredLogger.log_file_upload(request_id, "group_photo", "success", photo_url)
 
-        logger.info(f"[{request_id}] ✅ File URL assignments complete")
+            logger.info(f"[{request_id}] ✅ All team files uploaded successfully")
+            
+        except CloudinaryUploadError as e:
+            logger.error(f"[{request_id}] ❌ Cloudinary upload failed: {e}")
+            StructuredLogger.log_file_upload(request_id, "team_files", "failed", str(e))
+            return create_upload_error("team files", str(e))
+        except Exception as e:
+            logger.error(f"[{request_id}] ❌ Unexpected upload error: {e}")
+            return create_internal_error("File upload failed", {"error": str(e)})
         
         # -------------------------------
         # INSERT TEAM AND PLAYERS (SINGLE TRANSACTION)
@@ -395,26 +440,52 @@ async def register_team_production_hardened(
             db.add(team)
             logger.info(f"[{request_id}] ✅ Team added to session")
             
-            # Create players
+            # Create players with Cloudinary uploads
             player_list = []
             for p in players:
                 player_num = p["index"] + 1
                 player_id = f"{team_id}-P{player_num:02d}"
 
-                # Use dummy URLs for player files
+                # Upload player files to Cloudinary
                 aadhar_url = None
                 subs_url = None
 
-                if p["aadhar_file"]:
-                    aadhar_url = f"https://cdn.example.com/uploads/{player_id}/aadhar.pdf"
-                    logger.info(f"[{request_id}] ✅ Player {player_num} aadhar: {aadhar_url}")
-                    StructuredLogger.log_file_upload(request_id, f"player_{p['index']}_aadhar", "success", aadhar_url)
+                try:
+                    if p["aadhar_file"]:
+                        logger.info(f"[{request_id}] Uploading player {player_num} aadhar...")
+                        aadhar_url = await upload_with_retry(
+                            p["aadhar_file"],
+                            folder=f"pending/{team_id}/players",
+                            public_id=f"{player_id}_aadhar",
+                            resource_type="auto"
+                        )
+                        uploaded_urls[f"player_{p['index']}_aadhar"] = aadhar_url
+                        logger.info(f"[{request_id}] ✅ Player {player_num} aadhar: {aadhar_url}")
+                        StructuredLogger.log_file_upload(request_id, f"player_{p['index']}_aadhar", "success", aadhar_url)
 
-                if p["subscription_file"]:
-                    subs_url = f"https://cdn.example.com/uploads/{player_id}/subscription.pdf"
-                    logger.info(f"[{request_id}] ✅ Player {player_num} subscription: {subs_url}")
-                    StructuredLogger.log_file_upload(request_id, f"player_{p['index']}_subscription", "success", subs_url)
+                    if p["subscription_file"]:
+                        logger.info(f"[{request_id}] Uploading player {player_num} subscription...")
+                        subs_url = await upload_with_retry(
+                            p["subscription_file"],
+                            folder=f"pending/{team_id}/players",
+                            public_id=f"{player_id}_subscription",
+                            resource_type="auto"
+                        )
+                        uploaded_urls[f"player_{p['index']}_subscription"] = subs_url
+                        logger.info(f"[{request_id}] ✅ Player {player_num} subscription: {subs_url}")
+                        StructuredLogger.log_file_upload(request_id, f"player_{p['index']}_subscription", "success", subs_url)
+                        
+                except CloudinaryUploadError as e:
+                    logger.error(f"[{request_id}] ❌ Player {player_num} file upload failed: {e}")
+                    # Cleanup already uploaded files
+                    await cleanup_cloudinary_uploads(uploaded_urls, team_id, request_id)
+                    return create_upload_error(f"player {player_num} files", str(e))
+                except Exception as e:
+                    logger.error(f"[{request_id}] ❌ Unexpected error uploading player {player_num} files: {e}")
+                    await cleanup_cloudinary_uploads(uploaded_urls, team_id, request_id)
+                    return create_internal_error(f"Player {player_num} file upload failed", {"error": str(e)})
 
+                # Create player object after successful uploads
                 player = Player(
                     player_id=player_id,
                     team_id=team_id,
@@ -438,6 +509,10 @@ async def register_team_production_hardened(
             await db.rollback()
             logger.error(f"[{request_id}] ❌ IntegrityError: {e}")
             
+            # Cleanup uploaded files since database insert failed
+            logger.warning(f"[{request_id}] Database insert failed, cleaning up {len(uploaded_urls)} uploaded files...")
+            await cleanup_cloudinary_uploads(uploaded_urls, team_id, request_id)
+            
             # Handle specific integrity errors
             if "teams_team_id_key" in str(e):
                 return create_error_response(
@@ -458,6 +533,22 @@ async def register_team_production_hardened(
             return create_error_response(
                 ErrorCode.DATABASE_ERROR,
                 "Database error during registration",
+                {"error": str(e)},
+                500
+            )
+
+        except Exception as e:
+            await db.rollback()
+            logger.exception(f"[{request_id}] ❌ Unexpected database error: {e}")
+            
+            # Cleanup uploaded files on any database error
+            logger.warning(f"[{request_id}] Unexpected error, cleaning up {len(uploaded_urls)} uploaded files...")
+            await cleanup_cloudinary_uploads(uploaded_urls, team_id, request_id)
+            
+            StructuredLogger.log_exception(request_id, e)
+            return create_error_response(
+                ErrorCode.DATABASE_ERROR,
+                "Unexpected error during registration",
                 {"error": str(e)},
                 500
             )
