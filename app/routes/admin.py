@@ -168,27 +168,46 @@ async def confirm_team_registration(
     """
     Confirm/approve a team's registration (CLOUD-FIRST STRATEGY).
     
-    1. Move files from /pending/{team_id}/ to /confirmed/{team_id}/
-    2. Rename files with Team ID in filename (ICCT26-dda9_payment_receipt.pdf)
-    3. Update database with new Cloudinary URLs
-    4. Change registration_status to 'confirmed'
-    5. Send confirmation email with Team ID
+    1. Verify team exists (return 404 if not found)
+    2. Check if already confirmed (idempotent operation)
+    3. Move files from /pending/{team_id}/ to /confirmed/{team_id}/
+    4. Rename files with Team ID in filename (ICCT-001_payment_receipt.pdf)
+    5. Update database with new Cloudinary URLs
+    6. Change registration_status to 'confirmed'
+    7. Send confirmation email with Team ID
     
     Parameters:
-    - team_id: The unique team identifier
+    - team_id: The unique team identifier (e.g., ICCT-001)
     
     Returns:
     - Success message with updated team status and email notification status
+    
+    Error Codes:
+    - 404: Team not found
+    - 500: Server error (Cloudinary, database, or email failure)
     """
     logger.info(f"PUT /admin/teams/{team_id}/confirm - Confirming team registration...")
     try:
-        # Step 1: Get team from database
-        team = await DatabaseService.get_team(db, team_id)
+        # Step 1: Get team from database using DatabaseService
+        team = await DatabaseService.get_team_by_team_id(db, team_id)
         if not team:
             logger.warning(f"❌ Team not found: {team_id}")
-            raise HTTPException(status_code=404, detail="Team not found")
+            raise HTTPException(status_code=404, detail=f"Team not found: {team_id}")
         
-        # Step 2: Move files from pending to confirmed (with Team ID in filename)
+        # Step 2: Check if already confirmed (idempotent)
+        if team.registration_status == "confirmed":
+            logger.info(f"ℹ️ Team {team_id} is already confirmed - returning success")
+            return JSONResponse(content={
+                "success": True,
+                "message": f"Team {team_id} is already confirmed",
+                "data": {
+                    "teamId": team_id,
+                    "status": "confirmed",
+                    "alreadyConfirmed": True
+                }
+            })
+        
+        # Step 3: Move files from pending to confirmed (with Team ID in filename)
         logger.info(f"🔄 Moving files from /pending/ to /confirmed/ with Team ID in filename...")
         confirmed_urls = {}
         
@@ -200,7 +219,6 @@ async def confirm_team_registration(
             )
             if new_url:
                 confirmed_urls["payment_receipt"] = new_url
-                team.payment_receipt = new_url
         
         # Move pastor_letter
         if team.pastor_letter:
@@ -210,7 +228,6 @@ async def confirm_team_registration(
             )
             if new_url:
                 confirmed_urls["pastor_letter"] = new_url
-                team.pastor_letter = new_url
         
         # Move group_photo
         if team.group_photo:
@@ -220,32 +237,36 @@ async def confirm_team_registration(
             )
             if new_url:
                 confirmed_urls["group_photo"] = new_url
-                team.group_photo = new_url
         
         logger.info(f"✅ Files moved to confirmed folder: {list(confirmed_urls.keys())}")
         
-        # Step 3: Update status in database
-        team.registration_status = "confirmed"
-        db.add(team)
-        await db.commit()
+        # Step 4: Confirm team using DatabaseService (updates status and URLs)
+        success = await DatabaseService.confirm_team_registration(
+            db=db,
+            team_id=team_id,
+            new_cloudinary_urls=confirmed_urls
+        )
+        
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to confirm team in database")
         
         logger.info(f"✅ Updated {team_id} status to confirmed")
         
-        # Step 4: Get team details to send email
+        # Step 5: Get team details to send email
         team_data = await DatabaseService.get_team_details(db, team_id)
         email_status = "not_sent"
         
         if team_data and team_data.get('team'):
-            team = team_data['team']
-            captain = team.get('captain', {}) if isinstance(team.get('captain'), dict) else {}
-            vice_captain = team.get('viceCaptain', {}) if isinstance(team.get('viceCaptain'), dict) else {}
+            team_info = team_data['team']
+            captain = team_info.get('captain', {}) if isinstance(team_info.get('captain'), dict) else {}
+            vice_captain = team_info.get('viceCaptain', {}) if isinstance(team_info.get('viceCaptain'), dict) else {}
             players = team_data.get('players', [])
             
             captain_email = captain.get('email')
             captain_name = captain.get('name', 'Captain')
             captain_phone = captain.get('phone', '')
-            team_name = team.get('teamName', 'Unknown')
-            church_name = team.get('churchName', '')
+            team_name = team_info.get('teamName', 'Unknown')
+            church_name = team_info.get('churchName', '')
             vice_captain_name = vice_captain.get('name', '')
             vice_captain_phone = vice_captain.get('phone', '')
             vice_captain_email = vice_captain.get('email', '')

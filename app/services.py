@@ -618,6 +618,98 @@ class DatabaseService:
             raise
 
     @staticmethod
+    async def get_team_by_team_id(db: AsyncSession, team_id: str):
+        """
+        Get Team ORM object by team_id (e.g., 'ICCT-001')
+        
+        Args:
+            db: AsyncSession database session
+            team_id: Team identifier (ICCT-001 format)
+            
+        Returns:
+            Team ORM object or None if not found
+        """
+        from models import Team
+        from sqlalchemy import select
+        
+        logger.info(f"Fetching Team ORM object for team_id: {team_id}")
+        try:
+            query = select(Team).where(Team.team_id == team_id)
+            result = await db.execute(query)
+            team = result.scalar_one_or_none()
+            
+            if team:
+                logger.info(f"✅ Found team: {team.team_name} ({team_id})")
+            else:
+                logger.warning(f"❌ Team not found: {team_id}")
+            
+            return team
+            
+        except Exception as e:
+            logger.error(f"Error fetching team by team_id: {str(e)}")
+            raise
+
+    @staticmethod
+    async def confirm_team_registration(
+        db: AsyncSession, 
+        team_id: str,
+        new_cloudinary_urls: dict = None
+    ) -> bool:
+        """
+        Confirm a team's registration and update Cloudinary URLs
+        
+        Args:
+            db: AsyncSession database session
+            team_id: Team identifier (ICCT-001 format)
+            new_cloudinary_urls: Dictionary of updated Cloudinary URLs
+                {
+                    "payment_receipt": "https://...",
+                    "pastor_letter": "https://...",
+                    "group_photo": "https://..."
+                }
+            
+        Returns:
+            True if successful, False if team not found
+        """
+        from models import Team
+        
+        logger.info(f"Confirming team registration for: {team_id}")
+        try:
+            team = await DatabaseService.get_team_by_team_id(db, team_id)
+            
+            if not team:
+                logger.warning(f"❌ Cannot confirm - team not found: {team_id}")
+                return False
+            
+            # Check if already confirmed
+            if team.registration_status == "confirmed":
+                logger.info(f"ℹ️ Team {team_id} is already confirmed")
+                return True
+            
+            # Update Cloudinary URLs if provided
+            if new_cloudinary_urls:
+                if "payment_receipt" in new_cloudinary_urls:
+                    team.payment_receipt = new_cloudinary_urls["payment_receipt"]
+                if "pastor_letter" in new_cloudinary_urls:
+                    team.pastor_letter = new_cloudinary_urls["pastor_letter"]
+                if "group_photo" in new_cloudinary_urls:
+                    team.group_photo = new_cloudinary_urls["group_photo"]
+                logger.info(f"Updated Cloudinary URLs: {list(new_cloudinary_urls.keys())}")
+            
+            # Update status to confirmed
+            team.registration_status = "confirmed"
+            db.add(team)
+            await db.commit()
+            
+            logger.info(f"✅ Team {team_id} confirmed successfully")
+            return True
+            
+        except Exception as e:
+            await db.rollback()
+            logger.error(f"Error confirming team registration: {str(e)}")
+            raise
+
+    @staticmethod
     async def get_team_details(db: AsyncSession, team_id: str) -> Dict[str, Any]:
         """Get detailed information about a specific team"""
         

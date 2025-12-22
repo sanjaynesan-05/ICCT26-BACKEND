@@ -276,6 +276,45 @@ async def startup_event():
         except Exception as hardening_err:
             logger.warning(f"⚠️ Production hardening table creation failed: {hardening_err}")
         
+        # 🔥 STARTUP VALIDATION: Check database schema and configuration
+        logger.info("=" * 60)
+        logger.info("🔍 RUNNING STARTUP VALIDATION CHECKS")
+        logger.info("=" * 60)
+        
+        try:
+            from app.utils.startup_validation import validate_database_schema, validate_database_service_methods
+            
+            # Validate database schema
+            async with AsyncSessionLocal() as db:
+                schema_results = await validate_database_schema(db)
+                
+                if not schema_results["valid"]:
+                    logger.error("❌ CRITICAL: Database schema validation FAILED")
+                    logger.error("⚠️ Application may not function correctly")
+                    for error in schema_results["errors"]:
+                        logger.error(f"  - {error}")
+                else:
+                    logger.info("✅ Database schema validation PASSED")
+            
+            # Validate DatabaseService methods
+            service_results = validate_database_service_methods()
+            
+            if not service_results["valid"]:
+                logger.error("❌ CRITICAL: DatabaseService validation FAILED")
+                logger.error("⚠️ Admin endpoints will not work correctly")
+                for error in service_results["errors"]:
+                    logger.error(f"  - {error}")
+            else:
+                logger.info("✅ DatabaseService validation PASSED")
+            
+            logger.info("=" * 60)
+            logger.info("✅ STARTUP VALIDATION COMPLETE")
+            logger.info("=" * 60)
+            
+        except Exception as validation_err:
+            logger.error(f"⚠️ Startup validation encountered an error: {validation_err}")
+            logger.warning("Continuing startup despite validation errors...")
+        
         # 🔥 Warm up Neon by pinging it early
         try:
             async with async_engine.connect() as conn:
