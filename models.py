@@ -137,15 +137,15 @@ class Match(Base):
     round_number = Column(Integer, nullable=False)  # Numeric round (1, 2, 3...)
     match_number = Column(Integer, nullable=False)  # Match number within round
     
-    # Teams
-    team1_id = Column(Integer, ForeignKey("teams.id", ondelete="RESTRICT"), nullable=False, index=True)
-    team2_id = Column(Integer, ForeignKey("teams.id", ondelete="RESTRICT"), nullable=False, index=True)
+    # Teams - UUID foreign keys referencing teams.id (UUID)
+    team1_id = Column(UUID(as_uuid=True), ForeignKey("teams.id", ondelete="RESTRICT"), nullable=False, index=True)
+    team2_id = Column(UUID(as_uuid=True), ForeignKey("teams.id", ondelete="RESTRICT"), nullable=False, index=True)
     
     # Match status
     status = Column(String(20), nullable=False, default="scheduled", index=True)  # 'scheduled', 'live', 'completed'
     
     # Toss details
-    toss_winner_id = Column(Integer, ForeignKey("teams.id", ondelete="SET NULL"), nullable=True)  # Team that won the toss
+    toss_winner_id = Column(UUID(as_uuid=True), ForeignKey("teams.id", ondelete="SET NULL"), nullable=True)  # Team that won the toss
     toss_choice = Column(String(10), nullable=True)  # 'bat' or 'bowl'
     
     # Match timing
@@ -167,7 +167,7 @@ class Match(Base):
     team2_second_innings_score = Column(Integer, nullable=True)  # DEPRECATED
     
     # Result fields (NULL until match is completed)
-    winner_id = Column(Integer, ForeignKey("teams.id", ondelete="SET NULL"), nullable=True)
+    winner_id = Column(UUID(as_uuid=True), ForeignKey("teams.id", ondelete="SET NULL"), nullable=True)
     margin = Column(Integer, nullable=True)  # Numeric margin value
     margin_type = Column(String(20), nullable=True)  # 'runs' or 'wickets'
     won_by_batting_first = Column(Boolean, nullable=True)  # true if batting first team won
