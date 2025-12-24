@@ -1,19 +1,20 @@
 """
 Church Team Limit Validator
-Enforces maximum 2 teams per church with race condition protection.
+Enforces maximum 2 teams per church.
 
 This module provides validation logic for church team limits at registration time.
-It uses database-level locking (SELECT FOR UPDATE) within a transaction to prevent
-race conditions when multiple simultaneous registration requests occur.
+Safe for Neon PostgreSQL - does NOT use row-level locks on aggregate queries.
 """
 
 import logging
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, text
+from sqlalchemy import select, func
 from models import Team
 from fastapi import HTTPException
 
 logger = logging.getLogger(__name__)
+
+MAX_TEAMS_PER_CHURCH = 2
 
 
 async def validate_church_limit(db: AsyncSession, church_name: str, request_id: str = "unknown") -> bool:
@@ -21,12 +22,11 @@ async def validate_church_limit(db: AsyncSession, church_name: str, request_id: 
     Validate that a church has not exceeded the 2 team limit.
     
     This function:
-    1. Uses SELECT FOR UPDATE to lock the teams table rows for this church
-    2. Counts existing teams for the church
-    3. Returns True if registration can proceed (< 2 teams)
-    4. Returns False if limit exceeded (>= 2 teams)
+    1. Counts existing teams for the church (inside transaction)
+    2. Returns True if registration can proceed (< 2 teams)
+    3. Raises HTTPException 400 if limit exceeded (>= 2 teams)
     
-    Must be called within a transaction that will be committed after team insertion.
+    Safe for PostgreSQL - does NOT use FOR UPDATE on aggregate functions.
     
     Args:
         db: AsyncSession database connection
@@ -34,7 +34,7 @@ async def validate_church_limit(db: AsyncSession, church_name: str, request_id: 
         request_id: Optional request ID for logging
         
     Returns:
-        True if church can register another team, False if limit exceeded
+        True if church can register another team
         
     Raises:
         HTTPException with 400 status if limit exceeded
@@ -43,12 +43,11 @@ async def validate_church_limit(db: AsyncSession, church_name: str, request_id: 
     try:
         logger.info(f"[{request_id}] Checking church team limit for: {church_name}")
         
-        # Use SELECT FOR UPDATE to lock rows for this church
-        # This prevents race conditions where two concurrent requests could both think
-        # the limit hasn't been reached
+        # Count existing teams for this church
+        # NO FOR UPDATE - PostgreSQL doesn't allow it on aggregate functions
         stmt = select(func.count(Team.id)).where(
             Team.church_name == church_name
-        ).with_for_update()
+        )
         
         result = await db.execute(stmt)
         team_count = result.scalar() or 0
@@ -56,17 +55,17 @@ async def validate_church_limit(db: AsyncSession, church_name: str, request_id: 
         logger.info(f"[{request_id}] Current team count for '{church_name}': {team_count}")
         
         # Check if limit exceeded (maximum 2 teams per church)
-        if team_count >= 2:
+        if team_count >= MAX_TEAMS_PER_CHURCH:
             logger.warning(
                 f"[{request_id}] Church limit exceeded: "
-                f"'{church_name}' already has {team_count} team(s), maximum is 2"
+                f"'{church_name}' already has {team_count} team(s), maximum is {MAX_TEAMS_PER_CHURCH}"
             )
             raise HTTPException(
                 status_code=400,
-                detail=f"Maximum 2 teams already registered for this church"
+                detail=f"Maximum {MAX_TEAMS_PER_CHURCH} teams already registered for this church"
             )
         
-        logger.info(f"[{request_id}] Church limit check passed: {team_count}/2 teams")
+        logger.info(f"[{request_id}] Church limit check passed: {team_count}/{MAX_TEAMS_PER_CHURCH} teams")
         return True
         
     except HTTPException:

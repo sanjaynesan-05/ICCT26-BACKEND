@@ -2,7 +2,7 @@
 # Production-grade registration endpoint for ICCT26
 # Drop into your FastAPI project (adjust imports to your layout if necessary)
 
-from fastapi import APIRouter, Request, Header, Depends
+from fastapi import APIRouter, Request, Header, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
