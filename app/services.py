@@ -335,7 +335,7 @@ class EmailService:
         <body>
             <div class="container">
                 <div class="header">
-                    <h1>✅ Registration Approved!</h1>
+                    <h1>✅ Registration Successful!</h1>
                     <p>Your Team is Ready to Play</p>
                 </div>
                 
