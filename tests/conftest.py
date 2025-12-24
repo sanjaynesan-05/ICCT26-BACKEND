@@ -7,6 +7,12 @@ import asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
+# Configure pytest-asyncio
+pytest_plugins = ('pytest_asyncio',)
+
+# Mark all async fixtures
+pytestmark = pytest.mark.asyncio
+
 
 @pytest.fixture(scope="session")
 def event_loop():

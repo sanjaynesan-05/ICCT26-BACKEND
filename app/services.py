@@ -540,7 +540,7 @@ class DatabaseService:
                 vice_captain_whatsapp=registration.viceCaptain.whatsapp,
                 payment_receipt=registration.paymentReceipt,
                 pastor_letter=registration.pastorLetter,
-                group_photo=registration.groupPhoto
+                group_photo=None  # groupPhoto not in registration schema
             )
             session.add(team_db)
             await session.flush()
@@ -825,7 +825,7 @@ class DatabaseService:
             raise
 
     @staticmethod
-    async def get_player_details(db: AsyncSession, player_id: int) -> Dict[str, Any]:
+    async def get_player_details(db: AsyncSession, player_id: str) -> Dict[str, Any]:
         """Fetch details of a specific player"""
         
         logger.info(f"Fetching player details for player_id: {player_id}")
@@ -836,7 +836,7 @@ class DatabaseService:
                        t.team_id, t.team_name, t.church_name
                 FROM players p
                 LEFT JOIN teams t ON t.team_id = p.team_id
-                WHERE p.id = :player_id
+                WHERE p.player_id = :player_id
             """)
             
             result = await db.execute(player_query, {"player_id": player_id})
@@ -853,6 +853,9 @@ class DatabaseService:
                 "role": player_data["role"],
                 "aadharFile": player_data["aadhar_file"],
                 "subscriptionFile": player_data["subscription_file"],
+                "teamId": player_data["team_id"],
+                "teamName": player_data["team_name"],
+                "churchName": player_data["church_name"],
                 "team": {
                     "teamId": player_data["team_id"],
                     "teamName": player_data["team_name"],

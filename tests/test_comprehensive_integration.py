@@ -22,25 +22,25 @@ async def test_complete_registration_flow(async_db: AsyncSession):
     4. Verify players are created
     """
     # Create mock registration data
-    from app.schemas import TeamRegistration, Captain, ViceCaptain, PlayerInfo
+    from app.schemas import TeamRegistration, CaptainInfo, ViceCaptainInfo, PlayerDetails
     
     registration = TeamRegistration(
         teamName="Test Warriors",
         churchName="Test Church",
-        captain=Captain(
+        captain=CaptainInfo(
             name="John Doe",
             phone="1234567890",
             email="john@test.com",
             whatsapp="1234567890"
         ),
-        viceCaptain=ViceCaptain(
+        viceCaptain=ViceCaptainInfo(
             name="Jane Smith",
             phone="0987654321",
             email="jane@test.com",
             whatsapp="0987654321"
         ),
         players=[
-            PlayerInfo(
+            PlayerDetails(
                 name=f"Player {i}",
                 role="Batsman",
                 aadharFile="",
@@ -48,8 +48,7 @@ async def test_complete_registration_flow(async_db: AsyncSession):
             ) for i in range(1, 12)
         ],
         paymentReceipt="https://res.cloudinary.com/test/payment.pdf",
-        pastorLetter="https://res.cloudinary.com/test/letter.pdf",
-        groupPhoto=""
+        pastorLetter="https://res.cloudinary.com/test/letter.pdf"
     )
     
     # Generate team ID

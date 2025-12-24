@@ -121,12 +121,12 @@ async def get_team_details(team_id: str, db: AsyncSession = Depends(get_db_async
 
 
 @router.get("/players/{player_id}")
-async def get_player_details(player_id: int, db: AsyncSession = Depends(get_db_async)):
+async def get_player_details(player_id: str, db: AsyncSession = Depends(get_db_async)):
     """
     Fetch details of a specific player with team context.
 
     Parameters:
-    - player_id: The unique player identifier (integer ID)
+    - player_id: The unique player identifier (string, e.g., 'ICCT-007-P01')
 
     Returns:
     - Player information (ID, Name, Role, etc.)

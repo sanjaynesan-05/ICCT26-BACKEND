@@ -29,6 +29,7 @@ from app.utils.validation import (
 from app.utils.idempotency import check_idempotency_key, store_idempotency_key
 from app.utils.cloudinary_reliable import upload_with_retry, CloudinaryUploadError
 from app.utils.cloudinary_upload import cloudinary_uploader
+from app.utils.church_limit_validator import validate_church_limit
 from app.utils.error_responses import (
     ErrorCode,
     create_error_response,
@@ -418,6 +419,12 @@ async def register_team_production_hardened(
         logger.info(f"[{request_id}] Inserting team and players...")
         
         try:
+            # CHECK CHURCH TEAM LIMIT (with row-level locking)
+            # This validation runs within the transaction to prevent race conditions
+            logger.info(f"[{request_id}] Validating church team limit...")
+            await validate_church_limit(db, validated_church_name, request_id)
+            logger.info(f"[{request_id}] Church limit validation passed")
+            
             # Create team
             team = Team(
                 team_id=team_id,
@@ -535,6 +542,20 @@ async def register_team_production_hardened(
                 "Database error during registration",
                 {"error": str(e)},
                 500
+            )
+        
+        except HTTPException as http_exc:
+            # Church limit validation or other HTTP exceptions
+            await db.rollback()
+            logger.warning(f"[{request_id}] ❌ Request rejected: {http_exc.detail}")
+            
+            # Cleanup uploaded files
+            await cleanup_cloudinary_uploads(uploaded_urls, team_id, request_id)
+            
+            # Return the HTTP exception as-is (preserve status code and detail)
+            return JSONResponse(
+                status_code=http_exc.status_code,
+                content={"success": False, "detail": http_exc.detail}
             )
 
         except Exception as e:

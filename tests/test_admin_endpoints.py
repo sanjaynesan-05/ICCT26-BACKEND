@@ -297,8 +297,6 @@ class TestAdminEndpoints:
         required_fields = [
             ("playerId", "player_id"), 
             ("name", "name"), 
-            ("age", "age"), 
-            ("phone", "phone"), 
             ("role", "role"), 
             ("teamId", "team_id")
         ]

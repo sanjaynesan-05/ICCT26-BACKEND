@@ -7,7 +7,9 @@ import pytest_asyncio
 import asyncio
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
-from app.utils.race_safe_team_id import generate_next_team_id, TeamSequence, Base
+from app.utils.race_safe_team_id import generate_next_team_id
+from models import TeamSequence
+from database import Base
 
 
 @pytest_asyncio.fixture
