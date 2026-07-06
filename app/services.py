@@ -418,7 +418,7 @@ class EmailService:
                         <h3>❓ Important Reminders</h3>
                         <ul>
                             <li>Keep your Team ID ({team_id}) safe and handy</li>
-                            <li>Check website(<strong>icct26.netlify.app</strong>) regularly for match updates</li>
+                            <li>Check website(<strong>icct27.netlify.app</strong>) regularly for match updates</li>
                             <li>Bring valid IDs for all players at check-in (<strong>AADHAAR CARDS, SUBSCRIPTION CARDS, PASTOR LETTER</strong>)</li>
                             <li>Follow tournament rules and regulations</li>
                         </ul>
@@ -427,7 +427,7 @@ class EmailService:
                     <div class="section">
                         <h3>📞 Contact Us</h3>
                         
-                        <p><strong>Website:</strong> <a href="https://icct26.netlify.app" target="_blank">icct26.netlify.app</a></p>
+                        <p><strong>Website:</strong> <a href="https://icct27.netlify.app" target="_blank">icct27.netlify.app</a></p>
                         
                         <p><strong>Tournament Coordinators:</strong></p>
                         <p>Mr. Sam Richard (Head Co-Ordinator) - <a href="tel:+919543656533" class="phone-link">+91 9543656533</a></p>

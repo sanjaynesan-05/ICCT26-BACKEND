@@ -454,7 +454,7 @@ async def root():
             "docs_alt": "/redoc",
         },
         "cors_enabled": True,
-        "frontend_url": "https://icct26.netlify.app",
+        "frontend_url": "https://icct27.netlify.app",
         "timestamp": datetime.now().isoformat(),
     }
 
