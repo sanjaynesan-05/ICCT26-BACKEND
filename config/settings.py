@@ -12,6 +12,8 @@ from typing import Optional, List
 import os
 from pathlib import Path
 
+from config.churches import CHURCH_NAMES
+
 
 class Settings(BaseSettings):
     """
@@ -38,6 +40,7 @@ class Settings(BaseSettings):
     CLOUDINARY_CLOUD_NAME: str = Field(default="demo", description="Cloudinary cloud name")
     CLOUDINARY_API_KEY: str = Field(default="", description="Cloudinary API key")
     CLOUDINARY_API_SECRET: str = Field(default="", description="Cloudinary API secret")
+    CLOUDINARY_PREFIX: str = Field(default="icct27", description="Top-level Cloudinary folder for this season's uploads")
     
     @property
     def CLOUDINARY_ENABLED(self) -> bool:
@@ -179,6 +182,10 @@ class Settings(BaseSettings):
     
     # ============= FIELD VALIDATION CONSTRAINTS =============
     CHURCH_NAME_MAX_LENGTH: int = Field(default=200, description="Max length for church name")
+    CHURCH_LIST: str = Field(
+        default=",".join(CHURCH_NAMES),
+        description="Comma-separated church names; must match the frontend CHURCH_NAMES exactly",
+    )
     TEAM_NAME_MAX_LENGTH: int = Field(default=100, description="Max length for team name")
     PLAYER_NAME_MAX_LENGTH: int = Field(default=100, description="Max length for player name")
     PHONE_MIN_LENGTH: int = Field(default=10, description="Minimum phone number length")

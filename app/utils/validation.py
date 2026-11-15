@@ -15,6 +15,7 @@ Features:
 import re
 import os
 import mimetypes
+import struct
 from typing import Optional, Tuple
 from fastapi import UploadFile
 
@@ -39,6 +40,12 @@ ALLOWED_MIME_TYPES = {
     'image/jpeg',
     'image/jpg',
     'application/pdf'
+}
+ALLOWED_EXTENSIONS = {
+    ".png": "image/png",
+    ".jpeg": "image/jpeg",
+    ".jpg": "image/jpg",
+    ".pdf": "application/pdf",
 }
 
 # Regex patterns
@@ -80,7 +87,7 @@ def validate_name(name: str, field_name: str = "Name") -> str:
     """
     if not name or not name.strip():
         raise ValidationError(
-            "VALIDATION_FAILED",
+            "PLAYER_NAME_INVALID",
             f"{field_name} is required",
             field_name.lower().replace(" ", "_")
         )
@@ -89,21 +96,21 @@ def validate_name(name: str, field_name: str = "Name") -> str:
     
     if len(name) < MIN_NAME_LENGTH:
         raise ValidationError(
-            "VALIDATION_FAILED",
+            "PLAYER_NAME_INVALID",
             f"{field_name} must be at least {MIN_NAME_LENGTH} characters",
             field_name.lower().replace(" ", "_")
         )
     
     if len(name) > MAX_NAME_LENGTH:
         raise ValidationError(
-            "VALIDATION_FAILED",
+            "PLAYER_NAME_INVALID",
             f"{field_name} must not exceed {MAX_NAME_LENGTH} characters",
             field_name.lower().replace(" ", "_")
         )
     
     if not NAME_PATTERN.match(name):
         raise ValidationError(
-            "VALIDATION_FAILED",
+            "PLAYER_NAME_INVALID",
             f"{field_name} can only contain letters, spaces, hyphens, and apostrophes",
             field_name.lower().replace(" ", "_")
         )
@@ -130,7 +137,7 @@ def validate_team_name(team_name: str) -> str:
     """
     if not team_name or not team_name.strip():
         raise ValidationError(
-            "VALIDATION_FAILED",
+            "TEAM_NAME_INVALID",
             "Team name is required",
             "team_name"
         )
@@ -139,21 +146,21 @@ def validate_team_name(team_name: str) -> str:
     
     if len(team_name) < MIN_TEAM_NAME_LENGTH:
         raise ValidationError(
-            "VALIDATION_FAILED",
+            "TEAM_NAME_INVALID",
             f"Team name must be at least {MIN_TEAM_NAME_LENGTH} characters",
             "team_name"
         )
     
     if len(team_name) > MAX_TEAM_NAME_LENGTH:
         raise ValidationError(
-            "VALIDATION_FAILED",
+            "TEAM_NAME_INVALID",
             f"Team name must not exceed {MAX_TEAM_NAME_LENGTH} characters",
             "team_name"
         )
     
     if not TEAM_NAME_PATTERN.match(team_name):
         raise ValidationError(
-            "VALIDATION_FAILED",
+            "TEAM_NAME_INVALID",
             "Team name can only contain letters, numbers, spaces, hyphens, and apostrophes",
             "team_name"
         )
@@ -181,7 +188,7 @@ def validate_phone(phone: str, field_name: str = "Phone") -> str:
     """
     if not phone or not phone.strip():
         raise ValidationError(
-            "VALIDATION_FAILED",
+            "VALIDATION_ERROR",
             f"{field_name} is required",
             field_name.lower().replace(" ", "_")
         )
@@ -190,7 +197,7 @@ def validate_phone(phone: str, field_name: str = "Phone") -> str:
     
     if not PHONE_PATTERN.match(phone):
         raise ValidationError(
-            "VALIDATION_FAILED",
+            "VALIDATION_ERROR",
             f"{field_name} must be exactly {PHONE_LENGTH} digits",
             field_name.lower().replace(" ", "_")
         )
@@ -214,7 +221,7 @@ def validate_email(email: str, field_name: str = "Email") -> str:
     """
     if not email or not email.strip():
         raise ValidationError(
-            "VALIDATION_FAILED",
+            "VALIDATION_ERROR",
             f"{field_name} is required",
             field_name.lower().replace(" ", "_")
         )
@@ -223,7 +230,7 @@ def validate_email(email: str, field_name: str = "Email") -> str:
     
     if not EMAIL_PATTERN.match(email):
         raise ValidationError(
-            "VALIDATION_FAILED",
+            "VALIDATION_ERROR",
             f"{field_name} must be a valid email address",
             field_name.lower().replace(" ", "_")
         )
@@ -279,9 +286,9 @@ async def validate_file(
     Raises:
         ValidationError: If validation fails
     """
-    if not file:
+    if not file or not file.filename:
         raise ValidationError(
-            "VALIDATION_FAILED",
+            "PAYMENT_RECEIPT_REQUIRED",
             f"{field_name} is required",
             field_name.lower().replace(" ", "_")
         )
@@ -291,10 +298,11 @@ async def validate_file(
     file_size = file.file.tell()
     file.file.seek(0)  # Reset to beginning
     
+    receipt_field = "payment" in field_name.lower()
     if file_size > max_size:
         size_mb = max_size / (1024 * 1024)
         raise ValidationError(
-            "FILE_TOO_LARGE",
+            "PAYMENT_RECEIPT_TOO_LARGE" if receipt_field else "FILE_TOO_LARGE",
             f"{field_name} exceeds maximum size of {size_mb}MB",
             field_name.lower().replace(" ", "_")
         )
@@ -303,7 +311,33 @@ async def validate_file(
     file_content = await file.read(2048)  # Read first 2KB for detection
     await file.seek(0)  # Reset
     
-    # Try python-magic first, fall back to mimetypes library
+    extension = os.path.splitext(file.filename)[1].lower()
+    expected_mime = ALLOWED_EXTENSIONS.get(extension)
+    if expected_mime is None:
+        raise ValidationError(
+            "PAYMENT_RECEIPT_INVALID" if receipt_field else "INVALID_MIME_TYPE",
+            f"Invalid file type for {field_name}; must be PNG, JPEG, or PDF",
+            field_name.lower().replace(" ", "_")
+        )
+
+    # Inspect the signature before accepting a client-provided content type.
+    signature_mime = None
+    if file_content.startswith(b"\x89PNG\r\n\x1a\n"):
+        signature_mime = "image/png"
+    elif file_content.startswith(b"\xff\xd8\xff"):
+        signature_mime = "image/jpeg"
+    elif file_content.startswith(b"%PDF-"):
+        signature_mime = "application/pdf"
+    normalized_expected = "image/jpeg" if expected_mime == "image/jpg" else expected_mime
+    if signature_mime is None or signature_mime != normalized_expected:
+        raise ValidationError(
+            "PAYMENT_RECEIPT_INVALID" if receipt_field else "INVALID_MIME_TYPE",
+            f"Invalid file type for {field_name}; content does not match its extension",
+            field_name.lower().replace(" ", "_")
+        )
+
+    # Try python-magic where available, but retain signature validation as the
+    # authoritative fallback on platforms without libmagic.
     if HAS_MAGIC:
         try:
             mime = magic.from_buffer(file_content, mime=True)
@@ -311,15 +345,13 @@ async def validate_file(
             # Fallback to content_type header
             mime = file.content_type or 'application/octet-stream'
     else:
-        # Use mimetypes library (extension-based, less secure but works on Windows)
-        mime_guess, _ = mimetypes.guess_type(file.filename)
-        mime = mime_guess or file.content_type or 'application/octet-stream'
+        mime = signature_mime
     
     # Validate MIME type
-    if mime not in ALLOWED_MIME_TYPES:
+    if mime not in ALLOWED_MIME_TYPES or mime != normalized_expected:
         raise ValidationError(
-            "INVALID_MIME_TYPE",
-            f"{field_name} must be PNG, JPEG, or PDF (detected: {mime})",
+            "PAYMENT_RECEIPT_INVALID" if receipt_field else "INVALID_MIME_TYPE",
+            f"Invalid file type for {field_name}; MIME type does not match its extension",
             field_name.lower().replace(" ", "_")
         )
     

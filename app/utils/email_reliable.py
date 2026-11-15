@@ -16,7 +16,9 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from concurrent.futures import ThreadPoolExecutor
-from typing import Optional
+import re
+from html import escape, unescape
+from typing import Dict, List, Optional
 
 from app.config import settings
 
@@ -82,6 +84,35 @@ async def send_email_with_retry(
     return False
 
 
+_HTML_MARKER = re.compile(r"<!doctype\s+html|<html[\s>]|<(?:p|div|table|body|br)[\s>/]", re.IGNORECASE)
+
+
+def _looks_like_html(body: str) -> bool:
+    """True for HTML bodies, including <html lang="..."> and <!DOCTYPE html>."""
+    return bool(_HTML_MARKER.search(body or ""))
+
+
+def _html_to_text(html: str) -> str:
+    """Readable plain-text fallback for an HTML email."""
+    text = re.sub(r"(?is)<(head|style|script)[^>]*>.*?</\1>", "", html)
+    text = re.sub(r"(?is)<div[^>]*display:\s*none[^>]*>.*?</div>", "", text)  # hidden preheader
+    text = re.sub(r"(?i)<br\s*/?>", "\n", text)
+    text = re.sub(r"(?i)</(p|div|tr|h[1-6]|li|table)>", "\n", text)
+    text = re.sub(r"(?i)</td>", "  ", text)
+    text = re.sub(r"<[^>]+>", "", text)
+    text = unescape(text).replace("\xa0", " ")
+    lines = [" ".join(line.split()) for line in text.splitlines()]
+    out, blank = [], False
+    for line in lines:
+        if line:
+            out.append(line)
+            blank = False
+        elif not blank and out:
+            out.append("")
+            blank = True
+    return "\n".join(out).strip() + "\n"
+
+
 async def _send_sync_in_executor(to_email: str, subject: str, body: str) -> None:
     """
     Execute synchronous email sending in thread pool.
@@ -107,11 +138,13 @@ async def _send_sync_in_executor(to_email: str, subject: str, body: str) -> None
             msg['To'] = to_email
             msg['Subject'] = subject
             
-            # Attach body
-            if '<html>' in body.lower() or '<p>' in body.lower():
-                msg.attach(MIMEText(body, 'html'))
+            # Attach body. For HTML send multipart/alternative: plain-text fallback
+            # first, HTML last (clients show the last part they can render).
+            if _looks_like_html(body):
+                msg.attach(MIMEText(_html_to_text(body), 'plain', 'utf-8'))
+                msg.attach(MIMEText(body, 'html', 'utf-8'))
             else:
-                msg.attach(MIMEText(body, 'plain'))
+                msg.attach(MIMEText(body, 'plain', 'utf-8'))
             
             # Send via SMTP
             with smtplib.SMTP(settings.SMTP_SERVER, settings.SMTP_PORT, timeout=10) as server:
@@ -131,75 +164,114 @@ async def _send_sync_in_executor(to_email: str, subject: str, body: str) -> None
     await loop.run_in_executor(executor, _send)
 
 
+def _contact_rows(person: Dict[str, Optional[str]]) -> str:
+    """Table rows for a captain / vice-captain block (WhatsApp only if given)."""
+    rows = [
+        ("Name", person.get("name")),
+        ("Phone", person.get("phone")),
+        ("Email", person.get("email")),
+    ]
+    if person.get("whatsapp"):
+        rows.append(("WhatsApp", person.get("whatsapp")))
+    return "".join(
+        f'<tr><td style="padding:4px 12px 4px 0;color:#666;width:90px;">{label}</td>'
+        f'<td style="padding:4px 0;"><strong>{escape(value or "-")}</strong></td></tr>'
+        for label, value in rows
+    )
+
+
 def create_registration_email(
     team_name: str,
     team_id: str,
-    captain_name: str,
     church_name: str,
-    player_count: int
+    captain: Dict[str, Optional[str]],
+    vice_captain: Dict[str, Optional[str]],
+    players: List[str],
 ) -> str:
     """
-    Create HTML email template for registration confirmation.
-    
+    HTML "registration received" email.
+
     Args:
         team_name: Team name
-        team_id: Generated team ID
-        captain_name: Captain name
+        team_id: Generated team ID (e.g. ICCT-001)
         church_name: Church name
-        player_count: Number of players
-    
-    Returns:
-        str: HTML email body
+        captain / vice_captain: dicts with name, phone, email, whatsapp (whatsapp may be None)
+        players: player names in the order they were registered (player_0 first)
+
+    Every user-supplied value is HTML-escaped.
     """
-    html = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <style>
-            body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
-            .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
-            .header {{ background: linear-gradient(135deg, #FFCC29 0%, #002B5C 100%); color: white; padding: 30px; text-align: center; }}
-            .content {{ background: #f9f9f9; padding: 30px; border: 1px solid #ddd; }}
-            .section {{ background: white; padding: 20px; margin: 20px 0; border-left: 4px solid #FFCC29; }}
-            .footer {{ background: #333; color: white; padding: 20px; text-align: center; font-size: 12px; }}
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <div class="header">
-                <h1>🏏 Team Registration Confirmed!</h1>
-                <p>Welcome to ICCT26 Cricket Tournament</p>
-            </div>
-            
-            <div class="content">
-                <p>Dear <strong>{captain_name}</strong>,</p>
-                <p>Congratulations! Your team <strong>{team_name}</strong> has been successfully registered.</p>
-                
-                <div class="section">
-                    <h3>📋 Registration Details</h3>
-                    <p><strong>Team ID:</strong> {team_id}</p>
-                    <p><strong>Team Name:</strong> {team_name}</p>
-                    <p><strong>Church:</strong> {church_name}</p>
-                    <p><strong>Players:</strong> {player_count}</p>
-                </div>
-                
-                <div class="section">
-                    <h3>✅ Next Steps</h3>
-                    <ul>
-                        <li>Save your Team ID: <strong>{team_id}</strong></li>
-                        <li>Check email for match schedule updates</li>
-                        <li>Review tournament rules</li>
-                        <li>Arrive 30 minutes before match time</li>
-                    </ul>
-                </div>
-            </div>
-            
-            <div class="footer">
-                <p>This is an automated confirmation. Please do not reply.</p>
-                <p>&copy; 2025-2026 ICCT26 Tournament. All rights reserved.</p>
-            </div>
-        </div>
-    </body>
-    </html>
-    """
-    return html
+    player_rows = "".join(
+        f'<tr style="background:{"#ffffff" if i % 2 else "#f4f6fa"};">'
+        f'<td style="padding:6px 10px;border:1px solid #e3e3e3;text-align:center;">{i}</td>'
+        f'<td style="padding:6px 10px;border:1px solid #e3e3e3;">{escape(name)}</td>'
+        f'<td style="padding:6px 10px;border:1px solid #e3e3e3;color:#666;">{escape(team_id)}-P{i:02d}</td></tr>'
+        for i, name in enumerate(players, start=1)
+    )
+    team_name_html = escape(team_name)
+    team_id_html = escape(team_id)
+    section = "background:#ffffff;padding:20px;margin:20px 0;border-left:4px solid #FFCC29;"
+
+    return f"""<!DOCTYPE html>
+<html>
+<body style="margin:0;padding:0;font-family:Arial,sans-serif;line-height:1.6;color:#333;">
+  <div style="max-width:600px;margin:0 auto;padding:20px;">
+    <div style="background:#002B5C;background:linear-gradient(135deg,#FFCC29 0%,#002B5C 100%);color:#ffffff;padding:30px;text-align:center;">
+      <h1 style="margin:0;">&#127951; Team Registration Received</h1>
+      <p style="margin:8px 0 0;">ICCT Cricket Tournament</p>
+    </div>
+
+    <div style="background:#f9f9f9;padding:30px;border:1px solid #ddd;">
+      <p>Dear <strong>{escape(captain.get("name") or "Captain")}</strong>,</p>
+      <p>Your registration for <strong>{team_name_html}</strong> was received and is awaiting administrator review.</p>
+
+      <div style="{section}">
+        <h3 style="margin-top:0;">&#128203; Registration Details</h3>
+        <table style="border-collapse:collapse;">
+          <tr><td style="padding:4px 12px 4px 0;color:#666;width:90px;">Team ID</td><td><strong style="font-size:18px;">{team_id_html}</strong></td></tr>
+          <tr><td style="padding:4px 12px 4px 0;color:#666;">Team</td><td><strong>{team_name_html}</strong></td></tr>
+          <tr><td style="padding:4px 12px 4px 0;color:#666;">Church</td><td><strong>{escape(church_name)}</strong></td></tr>
+          <tr><td style="padding:4px 12px 4px 0;color:#666;">Players</td><td><strong>{len(players)}</strong></td></tr>
+          <tr><td style="padding:4px 12px 4px 0;color:#666;">Status</td><td><strong>Pending administrator review</strong></td></tr>
+        </table>
+      </div>
+
+      <div style="{section}">
+        <h3 style="margin-top:0;">&#129506; Captain</h3>
+        <table style="border-collapse:collapse;">{_contact_rows(captain)}</table>
+      </div>
+
+      <div style="{section}">
+        <h3 style="margin-top:0;">&#129309; Vice-Captain</h3>
+        <table style="border-collapse:collapse;">{_contact_rows(vice_captain)}</table>
+      </div>
+
+      <div style="{section}">
+        <h3 style="margin-top:0;">&#128101; Players (registration order)</h3>
+        <table style="border-collapse:collapse;width:100%;font-size:14px;">
+          <tr style="background:#002B5C;color:#ffffff;">
+            <th style="padding:6px 10px;border:1px solid #002B5C;width:40px;">#</th>
+            <th style="padding:6px 10px;border:1px solid #002B5C;text-align:left;">Player Name</th>
+            <th style="padding:6px 10px;border:1px solid #002B5C;text-align:left;">Player ID</th>
+          </tr>
+          {player_rows}
+        </table>
+      </div>
+
+      <div style="{section}">
+        <h3 style="margin-top:0;">&#9989; Next Steps</h3>
+        <ul>
+          <li>Save your Team ID: <strong>{team_id_html}</strong></li>
+          <li>Quote it in any correspondence about your registration</li>
+          <li>Wait for the administrator's approval update</li>
+        </ul>
+        <p style="color:#666;font-size:13px;">If any detail above is wrong, contact the tournament organisers and quote your Team ID.</p>
+      </div>
+    </div>
+
+    <div style="background:#333;color:#ffffff;padding:20px;text-align:center;font-size:12px;">
+      <p style="margin:0;">This is an automated message. Please do not reply.</p>
+    </div>
+  </div>
+</body>
+</html>
+"""

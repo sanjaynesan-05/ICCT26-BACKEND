@@ -247,9 +247,27 @@ async def startup_event():
                         id SERIAL PRIMARY KEY,
                         key VARCHAR(255) UNIQUE NOT NULL,
                         response_data TEXT,
-                        expires_at TIMESTAMP NOT NULL,
+                        expires_at TIMESTAMP NULL,
+                        endpoint VARCHAR(100) NOT NULL DEFAULT '/api/register/team',
+                        request_fingerprint VARCHAR(64),
+                        state VARCHAR(20) NOT NULL DEFAULT 'processing',
+                        team_id VARCHAR(50),
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )
+                """))
+                # teams.church_name_normalized, its UNIQUE index and registration_status
+                # are managed by scripts/migrate_2027.py, not at startup.
+                await conn.execute(text("""
+                    ALTER TABLE idempotency_keys ADD COLUMN IF NOT EXISTS endpoint VARCHAR(100) NOT NULL DEFAULT '/api/register/team'
+                """))
+                await conn.execute(text("""
+                    ALTER TABLE idempotency_keys ADD COLUMN IF NOT EXISTS request_fingerprint VARCHAR(64)
+                """))
+                await conn.execute(text("""
+                    ALTER TABLE idempotency_keys ADD COLUMN IF NOT EXISTS state VARCHAR(20) NOT NULL DEFAULT 'processing'
+                """))
+                await conn.execute(text("""
+                    ALTER TABLE idempotency_keys ADD COLUMN IF NOT EXISTS team_id VARCHAR(50)
                 """))
                 
                 # Create index for faster lookups
@@ -358,6 +376,7 @@ async def startup_event():
                             team_id VARCHAR(50) UNIQUE NOT NULL,
                             team_name VARCHAR(100) NOT NULL,
                             church_name VARCHAR(200) NOT NULL,
+                            church_name_normalized VARCHAR(200),
                             captain_name VARCHAR(100),
                             captain_phone VARCHAR(20),
                             captain_email VARCHAR(255),
@@ -369,6 +388,7 @@ async def startup_event():
                             payment_receipt TEXT,
                             pastor_letter TEXT,
                             group_photo TEXT,
+                            registration_status VARCHAR(20) NOT NULL DEFAULT 'pending',
                             registration_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                         )
@@ -379,7 +399,7 @@ async def startup_event():
                             player_id VARCHAR(50) UNIQUE NOT NULL,
                             team_id VARCHAR(50) REFERENCES teams(team_id) ON DELETE CASCADE,
                             name VARCHAR(100) NOT NULL,
-                            role VARCHAR(50) NOT NULL,
+                            role VARCHAR(50),
                             aadhar_file TEXT,
                             subscription_file TEXT,
                             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

@@ -207,6 +207,8 @@ def setup_middleware(app):
         allow_credentials=settings.CORS_ALLOW_CREDENTIALS,
         allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         allow_headers=["*"],
+        # Lets the browser read Retry-After on 409 REQUEST_IN_PROGRESS.
+        expose_headers=["Retry-After"],
     )
     
     # Gzip compression
