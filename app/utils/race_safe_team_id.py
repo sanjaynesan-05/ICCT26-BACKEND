@@ -160,7 +160,7 @@ async def sync_sequence_with_teams(db: AsyncSession) -> bool:
             logger.info(f"✅ Sequence synced: {max_team_num}")
             return True
         else:
-            logger.info(f"✅ Sequence in sync: {current_seq} (max team: {max_team_num})")
+            logger.debug(f"Sequence in sync: {current_seq} (max team: {max_team_num})")
             return True
             
     except Exception as e:

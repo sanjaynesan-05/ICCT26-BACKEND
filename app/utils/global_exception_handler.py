@@ -213,4 +213,4 @@ def setup_global_exception_handlers(app: FastAPI):
         GlobalExceptionHandlers.generic_exception_handler
     )
     
-    logger.info("✅ Global exception handlers registered")
+    logger.debug("Global exception handlers registered")

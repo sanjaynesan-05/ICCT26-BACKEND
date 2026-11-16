@@ -46,6 +46,64 @@ class JSONFormatter(logging.Formatter):
         return json.dumps(log_data)
 
 
+class ConsoleFormatter(logging.Formatter):
+    """
+    Compact, human-readable one-line formatter for the terminal.
+
+        09:16:18 INFO  startup        | db health ok (10.1s)
+        09:16:20 ERROR registration   | Team registration failed [rid=ab12cd34 reason=...]
+    """
+
+    LEVEL_COLORS = {
+        "DEBUG": "\033[90m",     # grey
+        "INFO": "\033[36m",      # cyan
+        "WARNING": "\033[33m",   # yellow
+        "ERROR": "\033[31m",     # red
+        "CRITICAL": "\033[41m",  # red background
+    }
+    RESET = "\033[0m"
+
+    NAME_ALIASES = {
+        "icct26_backend": "app",
+        "startup_validation": "validation",
+        "race_safe_team_id": "team_id",
+        "database_hardening": "db_hardening",
+        "global_exception_handler": "exceptions",
+        "production_middleware": "middleware",
+    }
+
+    def __init__(self, use_color: bool = False):
+        super().__init__()
+        self.use_color = use_color
+
+    def format(self, record: logging.LogRecord) -> str:
+        ts = datetime.fromtimestamp(record.created).strftime("%H:%M:%S")
+        level = {"WARNING": "WARN", "CRITICAL": "CRIT"}.get(record.levelname, record.levelname).ljust(5)
+        if self.use_color:
+            level = f"{self.LEVEL_COLORS.get(record.levelname, '')}{level}{self.RESET}"
+
+        # Short logger name: "app.utils.database_hardening" -> "database_hardening"
+        name = record.name.rsplit(".", 1)[-1]
+        name = self.NAME_ALIASES.get(name, name)[:14].ljust(14)
+
+        line = f"{ts} {level} {name} | {record.getMessage()}"
+
+        # Append request id / structured extras as compact key=value pairs
+        extras = []
+        rid = getattr(record, "request_id", None)
+        if rid and rid != "N/A":
+            extras.append(f"rid={str(rid)[:8]}")
+        extra_dict = getattr(record, "extra_dict", None)
+        if isinstance(extra_dict, dict):
+            extras.extend(f"{k}={v}" for k, v in extra_dict.items())
+        if extras:
+            line += f" [{' '.join(extras)}]"
+
+        if record.exc_info:
+            line += "\n" + self.formatException(record.exc_info)
+        return line
+
+
 class StructuredLogger(logging.LoggerAdapter):
     """
     Custom logger adapter that adds structured context.
@@ -86,25 +144,45 @@ def setup_logging(app_name: str, log_file: str = None, log_level: str = "INFO") 
         Configured logger
     """
     
-    # Create logger
-    logger = logging.getLogger(app_name)
-    logger.setLevel(getattr(logging, log_level))
-    
-    # Console handler with JSON formatter
+    level = getattr(logging, str(log_level).upper(), logging.INFO)
+
+    # Configure the ROOT logger once so every module (database, app.utils.*, routes)
+    # shares one handler set. Previously the app logger had its own JSON handler AND
+    # propagated to a basicConfig root handler, so every line was printed twice.
+    root = logging.getLogger()
+    for h in list(root.handlers):
+        root.removeHandler(h)
+    root.setLevel(level)
+
+    # Console: compact text by default; LOG_FORMAT=json for JSON (e.g. log aggregators)
     console_handler = logging.StreamHandler()
-    console_handler.setFormatter(JSONFormatter())
-    logger.addHandler(console_handler)
-    
-    # File handler if specified
+    if os.getenv("LOG_FORMAT", "text").lower() == "json":
+        console_handler.setFormatter(JSONFormatter())
+    else:
+        stream = getattr(console_handler, "stream", None)
+        use_color = bool(stream and hasattr(stream, "isatty") and stream.isatty()) and not os.getenv("NO_COLOR")
+        console_handler.setFormatter(ConsoleFormatter(use_color=use_color))
+    root.addHandler(console_handler)
+
+    # File: always JSON (machine-parseable)
     if log_file:
-        # Create log directory if it doesn't exist
         log_path = Path(log_file)
         log_path.parent.mkdir(parents=True, exist_ok=True)
-        
-        file_handler = logging.FileHandler(log_file)
+        file_handler = logging.FileHandler(log_file, encoding="utf-8")
         file_handler.setFormatter(JSONFormatter())
-        logger.addHandler(file_handler)
-    
+        root.addHandler(file_handler)
+
+    # Quiet noisy third-party loggers
+    for noisy in ("httpx", "httpcore", "urllib3", "cloudinary", "asyncio"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
+    # RequestLoggingMiddleware already logs one line per request (method, path, status, ms)
+    logging.getLogger("uvicorn.access").disabled = True
+
+    logger = logging.getLogger(app_name)
+    logger.setLevel(level)
+    for h in list(logger.handlers):
+        logger.removeHandler(h)
+    logger.propagate = True
     return logger
 
 
