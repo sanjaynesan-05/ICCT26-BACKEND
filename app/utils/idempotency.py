@@ -3,36 +3,41 @@ Idempotency Service - ICCT26
 =============================
 Prevents duplicate submissions using idempotency keys.
 
-Features:
-- Database-backed key storage
-- 10-minute TTL for keys
-- Thread-safe operations
-- Graceful duplicate rejection
+Registration keys never expire: a retry that arrives after a committed
+registration must replay the original 201. The claim/takeover logic for
+POST /api/register/team lives in app/routes/registration_production.py:
+  processing (fresh)            -> 409 REQUEST_IN_PROGRESS
+  failed / processing > 15 min  -> taken over atomically by one request
+  completed                     -> saved response replayed
+The helpers below are generic and are not used by the registration route.
 """
 
 import logging
 from datetime import datetime, timedelta
 from typing import Optional
-from sqlalchemy import Column, Integer, String, DateTime, select
+from sqlalchemy import Column, Integer, String, DateTime, Text, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import declarative_base
+from database import Base
 
 logger = logging.getLogger(__name__)
-Base = declarative_base()
 
 
 class IdempotencyKey(Base):
     """
-    Store used idempotency keys with TTL.
-    Prevents duplicate submissions within 10-minute window.
+    Durable registration request state. Records are intentionally not expired:
+    a retry after a committed transaction must replay the original result.
     """
     __tablename__ = "idempotency_keys"
     
     id = Column(Integer, primary_key=True, autoincrement=True)
     key = Column(String(255), unique=True, nullable=False, index=True)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    expires_at = Column(DateTime, nullable=False)
-    response_data = Column(String, nullable=True)  # Store original response
+    expires_at = Column(DateTime, nullable=True)
+    endpoint = Column(String(100), nullable=False, default="/api/register/team")
+    request_fingerprint = Column(String(64), nullable=True)
+    state = Column(String(20), nullable=False, default="processing", index=True)
+    response_data = Column(Text, nullable=True)
+    team_id = Column(String(50), nullable=True)
 
 
 async def initialize_idempotency_table(db: AsyncSession) -> None:
@@ -53,24 +58,20 @@ async def check_idempotency_key(
     ttl_minutes: int = 10
 ) -> Optional[str]:
     """
-    Check if idempotency key has been used recently.
+    Return the stored response for a key if the key exists (any age).
     
     Args:
         db: Database session
         key: Idempotency key from header
-        ttl_minutes: TTL for keys (default 10 minutes)
+        ttl_minutes: Ignored; kept for backward compatibility
     
     Returns:
         Optional[str]: Previous response data if duplicate, None if new
     """
     try:
-        # Clean up expired keys first
-        await cleanup_expired_keys(db)
-        
-        # Check if key exists and is not expired
+        # Completed and processing records are both relevant to replay safety.
         stmt = select(IdempotencyKey).where(
-            IdempotencyKey.key == key,
-            IdempotencyKey.expires_at > datetime.utcnow()
+            IdempotencyKey.key == key
         )
         
         result = await db.execute(stmt)
@@ -91,25 +92,32 @@ async def store_idempotency_key(
     db: AsyncSession,
     key: str,
     response_data: str,
-    ttl_minutes: int = 10
+    ttl_minutes: int = 10,
+    request_fingerprint: Optional[str] = None,
+    state: str = "completed",
+    team_id: Optional[str] = None
 ) -> None:
     """
-    Store idempotency key after successful operation.
+    Store an idempotency key with its response. The key never expires
+    (expires_at is left NULL).
     
     Args:
         db: Database session
         key: Idempotency key
         response_data: JSON response to cache
-        ttl_minutes: TTL for key
+        ttl_minutes: Ignored; kept for backward compatibility
     """
     try:
-        expires_at = datetime.utcnow() + timedelta(minutes=ttl_minutes)
+        expires_at = None
         
         idempotency_record = IdempotencyKey(
             key=key,
             created_at=datetime.utcnow(),
             expires_at=expires_at,
-            response_data=response_data
+            response_data=response_data,
+            request_fingerprint=request_fingerprint,
+            state=state,
+            team_id=team_id,
         )
         
         db.add(idempotency_record)
@@ -124,13 +132,16 @@ async def store_idempotency_key(
 
 async def cleanup_expired_keys(db: AsyncSession) -> int:
     """
-    Clean up expired idempotency keys.
+    Delete keys whose expires_at is set and in the past.
+    
+    Registration keys are stored with expires_at = NULL, so this never
+    deletes them; it only removes rows that were explicitly given an expiry.
     
     Args:
         db: Database session
     
     Returns:
-        int: Number of keys deleted
+        int: Number of keys deleted (normally 0)
     """
     try:
         from sqlalchemy import delete
@@ -144,7 +155,7 @@ async def cleanup_expired_keys(db: AsyncSession) -> int:
         
         deleted_count = result.rowcount
         if deleted_count > 0:
-            logger.info(f"🧹 Cleaned up {deleted_count} expired idempotency keys")
+            logger.info(f"🧹 Deleted {deleted_count} idempotency keys with a past expires_at")
         
         return deleted_count
         

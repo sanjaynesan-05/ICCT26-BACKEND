@@ -38,13 +38,27 @@ class ErrorCode:
     UNAUTHORIZED = "UNAUTHORIZED"
     NOT_FOUND = "NOT_FOUND"
     TEAM_ID_GENERATION_FAILED = "TEAM_ID_GENERATION_FAILED"
+    CHURCH_REQUIRED = "CHURCH_REQUIRED"
+    CHURCH_ALREADY_REGISTERED = "CHURCH_ALREADY_REGISTERED"
+    TEAM_NAME_INVALID = "TEAM_NAME_INVALID"
+    CAPTAIN_DETAILS_INVALID = "CAPTAIN_DETAILS_INVALID"
+    VICE_CAPTAIN_DETAILS_INVALID = "VICE_CAPTAIN_DETAILS_INVALID"
+    PLAYER_COUNT_INVALID = "PLAYER_COUNT_INVALID"
+    PLAYER_NAME_INVALID = "PLAYER_NAME_INVALID"
+    PAYMENT_RECEIPT_REQUIRED = "PAYMENT_RECEIPT_REQUIRED"
+    PAYMENT_RECEIPT_INVALID = "PAYMENT_RECEIPT_INVALID"
+    PAYMENT_RECEIPT_TOO_LARGE = "PAYMENT_RECEIPT_TOO_LARGE"
+    IDEMPOTENCY_KEY_REQUIRED = "IDEMPOTENCY_KEY_REQUIRED"
+    FILE_UPLOAD_FAILED = "FILE_UPLOAD_FAILED"
+    REQUEST_IN_PROGRESS = "REQUEST_IN_PROGRESS"
 
 
 def create_error_response(
     error_code: str,
     message: str,
     details: Optional[Dict[str, Any]] = None,
-    status_code: int = 400
+    status_code: int = 400,
+    headers: Optional[Dict[str, str]] = None,
 ) -> JSONResponse:
     """
     Create standardized error response.
@@ -52,8 +66,9 @@ def create_error_response(
     Args:
         error_code: Error code constant
         message: Human-readable error message
-        details: Additional error details
+        details: Additional error details (always present in the body, {} if none)
         status_code: HTTP status code
+        headers: Extra response headers (e.g. Retry-After)
     
     Returns:
         JSONResponse: Formatted error response
@@ -61,17 +76,16 @@ def create_error_response(
     response_data = {
         "success": False,
         "error_code": error_code,
-        "message": message
+        "message": message,
+        "details": details or {},
     }
-    
-    if details:
-        response_data["details"] = details
     
     logger.error(f"Error response: {error_code} - {message}")
     
     return JSONResponse(
         status_code=status_code,
-        content=response_data
+        content=response_data,
+        headers=headers,
     )
 
 

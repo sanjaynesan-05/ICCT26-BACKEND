@@ -32,6 +32,9 @@ class Team(Base):
     __table_args__ = (
         # Unique constraint to prevent duplicate submissions
         UniqueConstraint('team_name', 'captain_phone', name='uq_team_name_captain_phone'),
+        # One team per church. Created by scripts/migrate_2027.py; the route maps
+        # violations of this name to 409 CHURCH_ALREADY_REGISTERED.
+        Index('uq_registered_team_church', 'church_name_normalized', unique=True),
         Index('idx_team_captain', 'team_name', 'captain_phone'),
     )
 
@@ -42,6 +45,7 @@ class Team(Base):
     team_id = Column(String(50), unique=True, nullable=False, index=True)
     team_name = Column(String(100), nullable=False)
     church_name = Column(String(200), nullable=False)
+    church_name_normalized = Column(String(200), nullable=False)  # config.churches.normalize_church_name()
 
     # Captain information
     captain_name = Column(String(100), nullable=False)
@@ -55,10 +59,12 @@ class Team(Base):
     vice_captain_email = Column(String(255), nullable=False)
     vice_captain_whatsapp = Column(String(20), nullable=True)
 
-    # File uploads (Base64 - Text for unlimited size)
+    # File uploads. payment_receipt is a Cloudinary URL. pastor_letter and
+    # group_photo are legacy (no longer collected) but kept nullable because
+    # admin pages still read them.
     payment_receipt = Column(Text, nullable=True)
     pastor_letter = Column(Text, nullable=True)
-    group_photo = Column(Text, nullable=True)  # Team group photo (Base64)
+    group_photo = Column(Text, nullable=True)
 
     # Registration status - 'pending', 'confirmed', 'rejected'
     registration_status = Column(String(20), nullable=False, default='pending', server_default='pending', index=True)
@@ -99,9 +105,9 @@ class Player(Base):
 
     # Player information
     name = Column(String(100), nullable=False)
-    role = Column(String(20), nullable=True)  # Optional player role
+    role = Column(String(20), nullable=True)  # Legacy, no longer collected
 
-    # File uploads (Base64 - Text for unlimited size)
+    # Legacy uploads, no longer collected; nullable because admin pages read them
     aadhar_file = Column(Text, nullable=True)
     subscription_file = Column(Text, nullable=True)
 

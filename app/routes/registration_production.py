@@ -1,611 +1,450 @@
-# registration_production.py
-# Production-grade registration endpoint for ICCT26
-# Drop into your FastAPI project (adjust imports to your layout if necessary)
+"""
+POST /api/register/team: multipart team registration (2027 frontend contract).
 
-from fastapi import APIRouter, Request, Header, Depends, HTTPException
-from fastapi.responses import JSONResponse
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.exc import IntegrityError
-from datetime import datetime
-from typing import Optional, Any, Dict, List
+Flow:
+  1. Validate the Idempotency-Key header and every form field (422 VALIDATION_ERROR).
+  2. Claim the idempotency key (new key / replay / in-progress / takeover).
+  3. Reject an already-registered church BEFORE uploading anything.
+  4. Upload the receipt to {CLOUDINARY_PREFIX}/pending/{idempotency_key}/payment_receipt.
+     No database transaction or lock is open during the upload.
+  5. One short transaction: next team number, team + players, key -> completed.
+  6. No email is sent at registration; the team is emailed only after admin approval.
+"""
+
+import hashlib
 import json
 import logging
+import re
+from typing import Any, Dict, List, Optional, Tuple
 
-# Database / models
-from database import get_db_async
-from models import Team, Player
+from fastapi import APIRouter, Depends, Header, Request
+from fastapi.responses import JSONResponse
+from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.datastructures import FormData, UploadFile
 
-# Utilities (assumes these exist in your project)
-from app.utils.race_safe_team_id import generate_next_team_id
+from config.churches import build_church_lookup, normalize_church_name, parse_church_list
 from config.settings import settings
+from database import get_db_async
+from models import Player, Team
+from app.utils.cloudinary_reliable import CloudinaryUploadError, upload_with_retry
+from app.utils.error_responses import ErrorCode, create_error_response
 from app.utils.validation import (
-    validate_name,
-    validate_team_name,
-    validate_phone,
+    ValidationError,
     validate_email,
     validate_file,
-    ValidationError
+    validate_name,
+    validate_phone,
+    validate_team_name,
 )
-from app.utils.idempotency import check_idempotency_key, store_idempotency_key
-from app.utils.cloudinary_reliable import upload_with_retry, CloudinaryUploadError
-from app.utils.cloudinary_upload import cloudinary_uploader
-from app.utils.church_limit_validator import validate_church_limit
-from app.utils.error_responses import (
-    ErrorCode,
-    create_error_response,
-    create_validation_error,
-    create_duplicate_error,
-    create_database_error,
-    create_upload_error,
-    create_internal_error
-)
-from app.middleware.logging_middleware import StructuredLogger
 
-from starlette.datastructures import UploadFile  # type: ignore
-
-router = APIRouter()
 logger = logging.getLogger(__name__)
+router = APIRouter()
 
-# ============================================================
-# CONFIGURATION: Retry settings with defensive fallback
-# ============================================================
-MAX_RETRIES = getattr(settings, 'MAX_RETRIES', 3)
-logger.info(f"🔧 MAX_RETRIES configured: {MAX_RETRIES} (default: 3)")
+ENDPOINT = "/api/register/team"
+CHURCH_UNIQUE_CONSTRAINT = "uq_registered_team_church"
+# Other unique indexes on teams in the live database -> (form field, message).
+_OTHER_UNIQUE = {
+    "ix_teams_captain_email": ("captain_email", "This captain email is already used by another registered team."),
+    "ix_teams_captain_phone": ("captain_phone", "This captain phone number is already used by another registered team."),
+    "uq_team_name_captain_phone": ("team_name", "A team with this name and captain phone is already registered."),
+}
+STALE_PROCESSING_MINUTES = 15
+RETRY_AFTER_SECONDS = "5"
+
+_UUID_PATTERN = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+_PLAYER_FIELD_PATTERN = re.compile(r"^player_(\d+)_name$")
+MIN_PLAYERS = 13
+MAX_PLAYERS = 17
 
 
-# ============================================================
-# CLEANUP FUNCTION: Cloudinary orphaned file removal
-# ============================================================
-async def cleanup_cloudinary_uploads(uploaded_urls: Dict[str, Optional[str]], team_id: str, request_id: str) -> bool:
-    """
-    Delete uploaded files from Cloudinary if database save fails.
-    Prevents orphaned files when registration fails after Cloudinary uploads.
-    
-    Args:
-        uploaded_urls: Dict with keys like 'pastor_letter', 'payment_receipt', 'group_photo'
-        team_id: Team ID for logging
-        request_id: Request ID for tracing
-    
-    Returns:
-        bool: True if cleanup successful or no files to delete, False if cleanup failed
-    """
+# ---------------------------------------------------------------------------
+# Responses
+# ---------------------------------------------------------------------------
+
+def _error(code: str, message: str, details: Optional[Dict[str, Any]] = None, status: int = 400,
+           headers: Optional[Dict[str, str]] = None) -> JSONResponse:
+    return create_error_response(code, message, details, status, headers)
+
+
+def _validation_error(message: str, field: Optional[str], reason: Optional[str] = None) -> JSONResponse:
+    details: Dict[str, Any] = {}
+    if field:
+        details["field"] = field
+    if reason:
+        details["reason"] = reason
+    return _error(ErrorCode.VALIDATION_ERROR, message, details, status=422)
+
+
+def _in_progress() -> JSONResponse:
+    return _error(
+        ErrorCode.REQUEST_IN_PROGRESS,
+        "This registration is still being processed. Please wait.",
+        status=409,
+        headers={"Retry-After": RETRY_AFTER_SECONDS},
+    )
+
+
+def _church_taken(church_name: str) -> JSONResponse:
+    return _error(
+        ErrorCode.CHURCH_ALREADY_REGISTERED,
+        f"{church_name} already has its one allowed entry.",
+        {"field": "church_name"},
+        status=409,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Form parsing
+# ---------------------------------------------------------------------------
+
+def _text(form: FormData, key: str) -> Optional[str]:
+    value = form.get(key)
+    if value is None or isinstance(value, UploadFile):
+        return None
+    return str(value).strip()
+
+
+def _file(form: FormData, key: str) -> Optional[UploadFile]:
+    value = form.get(key)
+    return value if isinstance(value, UploadFile) else None
+
+
+def _player_fields(form: FormData) -> Tuple[List[str], Optional[str]]:
+    """Return the player field keys in index order, or an error message."""
+    indexes: Dict[int, str] = {}
+    for key, _ in form.multi_items():
+        if not key.startswith("player_"):
+            continue
+        match = _PLAYER_FIELD_PATTERN.fullmatch(key)
+        if not match:
+            return [], f"Malformed player field name: {key}"
+        index = int(match.group(1))
+        if index in indexes:
+            return [], f"Duplicate player index: {key}"
+        indexes[index] = key
+    if sorted(indexes) != list(range(len(indexes))):
+        return [], "Player indexes must be sequential starting at 0"
+    return [indexes[i] for i in range(len(indexes))], None
+
+
+async def _sha256(upload: UploadFile) -> str:
+    await upload.seek(0)
+    digest = hashlib.sha256()
+    while chunk := await upload.read(1024 * 1024):
+        digest.update(chunk)
+    await upload.seek(0)
+    return digest.hexdigest()
+
+
+def _fingerprint(values: Dict[str, Any], receipt_digest: str) -> str:
+    payload = json.dumps({"fields": values, "receipt": receipt_digest}, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _validate_fields(form: FormData, player_keys: List[str]) -> Dict[str, Any]:
+    """Validate every text field. Raises ValidationError on the first failure."""
+    def optional_phone(key: str, label: str) -> Optional[str]:
+        raw = _text(form, key)
+        return validate_phone(raw, label) if raw else None  # '' -> NULL
+
+    church_raw = " ".join((_text(form, "church_name") or "").split())
+    if not church_raw:
+        raise ValidationError(ErrorCode.CHURCH_REQUIRED, "Church name is required", "church_name")
+    lookup = build_church_lookup(parse_church_list(settings.CHURCH_LIST))
+    normalized = normalize_church_name(church_raw)
+    if lookup and normalized not in lookup:
+        raise ValidationError(ErrorCode.VALIDATION_ERROR, "Church is not in the tournament list", "church_name")
+
+    return {
+        "team_name": validate_team_name(_text(form, "team_name") or ""),
+        # Store the configured spelling so admin pages and availability agree.
+        "church_name": lookup.get(normalized, church_raw),
+        "church_name_normalized": normalized,
+        "captain_name": validate_name(_text(form, "captain_name") or "", "Captain name"),
+        "captain_phone": validate_phone(_text(form, "captain_phone") or "", "Captain phone"),
+        "captain_email": validate_email(_text(form, "captain_email") or "", "Captain email"),
+        "captain_whatsapp": optional_phone("captain_whatsapp", "Captain whatsapp"),
+        "vice_name": validate_name(_text(form, "vice_name") or "", "Vice name"),
+        "vice_phone": validate_phone(_text(form, "vice_phone") or "", "Vice phone"),
+        "vice_email": validate_email(_text(form, "vice_email") or "", "Vice email"),
+        "vice_whatsapp": optional_phone("vice_whatsapp", "Vice whatsapp"),
+        "players": [_validate_player(form, i, key) for i, key in enumerate(player_keys)],
+    }
+
+
+def _validate_player(form: FormData, index: int, key: str) -> str:
     try:
-        deletion_count = 0
-        failed_deletions = []
-        
-        logger.warning(f"[{request_id}] 🧹 CLEANUP: Starting Cloudinary cleanup for team {team_id}")
-        
-        for file_type, url in uploaded_urls.items():
-            if not url:
-                continue  # Skip empty/None URLs
-            
-            try:
-                # Extract public_id from Cloudinary URL
-                # URL format: https://res.cloudinary.com/.../upload/v.../ICCT-XXX_fieldname
-                if 'cloudinary.com' in url:
-                    # Extract public_id from URL - last part before file extension
-                    parts = url.split('/')[-1].split('.')
-                    public_id = parts[0] if parts else None
-                    
-                    if public_id:
-                        logger.info(f"[{request_id}] 🗑️ Attempting to delete from Cloudinary: {public_id}")
-                        # Use cloudinary_uploader to delete
-                        from app.utils.cloudinary_upload import cloudinary_uploader
-                        
-                        # Try to delete from both pending and confirmed folders
-                        deleted = False
-                        for folder in [f"pending/{team_id}", f"confirmed/{team_id}"]:
-                            try:
-                                cloudinary_uploader.delete_file(f"{folder}/{public_id}")
-                                logger.info(f"[{request_id}] ✅ CLEANUP: Deleted {folder}/{public_id}")
-                                deletion_count += 1
-                                deleted = True
-                                break
-                            except Exception as e:
-                                logger.debug(f"[{request_id}] File not in {folder}: {e}")
-                                continue
-                        
-                        if not deleted:
-                            failed_deletions.append(f"{file_type}: {public_id}")
-                
-            except Exception as e:
-                logger.warning(f"[{request_id}] ⚠️ CLEANUP: Failed to delete {file_type}: {e}")
-                failed_deletions.append(file_type)
-                continue
-        
-        if deletion_count > 0:
-            logger.warning(f"[{request_id}] ✅ CLEANUP: Deleted {deletion_count} orphaned file(s)")
-        
-        if failed_deletions:
-            logger.error(f"[{request_id}] ⚠️ CLEANUP: Some files could not be deleted: {failed_deletions}")
-        
-        return True
-        
-    except Exception as e:
-        logger.error(f"[{request_id}] ❌ CLEANUP: Cleanup failed: {e}")
-        import traceback
-        logger.error(traceback.format_exc())
-        return False
+        return validate_name(_text(form, key) or "", f"Player {index + 1} name")
+    except ValidationError as exc:
+        exc.field = key  # report the real form field, e.g. player_0_name
+        raise
 
+
+# ---------------------------------------------------------------------------
+# Idempotency
+# ---------------------------------------------------------------------------
+
+async def _claim_key(db: AsyncSession, key: str, fingerprint: str) -> Tuple[Optional[int], Optional[JSONResponse]]:
+    """
+    Claim the idempotency key for this request.
+
+    Returns (record_id, None) when this request owns the key and should proceed,
+    or (None, response) when the caller must return `response` immediately.
+    """
+    inserted = await db.execute(
+        text("""
+            INSERT INTO idempotency_keys (key, request_fingerprint, state, endpoint, created_at)
+            VALUES (:key, :fp, 'processing', :endpoint, now())
+            ON CONFLICT (key) DO NOTHING
+            RETURNING id
+        """),
+        {"key": key, "fp": fingerprint, "endpoint": ENDPOINT},
+    )
+    record_id = inserted.scalar_one_or_none()
+    await db.commit()
+    if record_id is not None:
+        return record_id, None
+
+    existing = (await db.execute(
+        text("SELECT request_fingerprint, state, response_data FROM idempotency_keys WHERE key = :key"),
+        {"key": key},
+    )).one_or_none()
+    await db.commit()
+    if existing is None:
+        # Deleted between INSERT and SELECT; let the client retry with the same key.
+        return None, _in_progress()
+
+    stored_fp, state, response_data = existing
+    if stored_fp and stored_fp != fingerprint:
+        return None, _error(
+            ErrorCode.DUPLICATE_SUBMISSION,
+            "This Idempotency-Key was already used for a different registration.",
+            status=409,
+        )
+    if state == "completed" and response_data:
+        return None, JSONResponse(status_code=201, content=json.loads(response_data))
+
+    # failed, or processing for too long: take it over atomically.
+    taken = await db.execute(
+        text(f"""
+            UPDATE idempotency_keys
+               SET state = 'processing', created_at = now(), response_data = NULL,
+                   request_fingerprint = :fp
+             WHERE key = :key
+               AND (state = 'failed'
+                    OR (state = 'processing'
+                        AND created_at < now() - interval '{STALE_PROCESSING_MINUTES} minutes'))
+            RETURNING id
+        """),
+        {"key": key, "fp": fingerprint},
+    )
+    record_id = taken.scalar_one_or_none()
+    await db.commit()
+    if record_id is None:
+        return None, _in_progress()
+    return record_id, None
+
+
+async def _mark_failed(db: AsyncSession, record_id: int, error_code: str, message: str) -> None:
+    """Release the key so a retry with the same key can take it over."""
+    try:
+        await db.execute(
+            text("""
+                UPDATE idempotency_keys SET state = 'failed', response_data = :data
+                 WHERE id = :id AND state = 'processing'
+            """),
+            {"id": record_id, "data": json.dumps({"success": False, "error_code": error_code, "message": message})},
+        )
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        logger.exception("Failed to mark idempotency key %s as failed", record_id)
+
+
+# ---------------------------------------------------------------------------
+# Cloudinary (module-level so tests can patch them)
+# ---------------------------------------------------------------------------
+
+def _receipt_location(idempotency_key: str) -> Tuple[str, str]:
+    return f"{settings.CLOUDINARY_PREFIX}/pending/{idempotency_key}", "payment_receipt"
+
+
+async def _upload_receipt(receipt: UploadFile, idempotency_key: str) -> str:
+    if not settings.CLOUDINARY_ENABLED:
+        raise CloudinaryUploadError("File upload service is not configured")
+    folder, public_id = _receipt_location(idempotency_key)
+    return await upload_with_retry(receipt, folder=folder, public_id=public_id, resource_type="auto")
+
+
+async def _delete_receipt(idempotency_key: str) -> None:
+    """Best-effort removal of an uploaded receipt after a failed registration."""
+    try:
+        from app.utils.cloudinary_upload import cloudinary_uploader
+        folder, public_id = _receipt_location(idempotency_key)
+        await cloudinary_uploader.delete_file(f"{folder}/{public_id}")
+    except Exception:
+        logger.exception("Receipt cleanup failed for key %s", idempotency_key)
+
+
+def _constraint_name(exc: IntegrityError) -> Optional[str]:
+    orig = exc.orig
+    for candidate in (orig, getattr(orig, "__cause__", None)):
+        name = getattr(candidate, "constraint_name", None)
+        if name:
+            return name
+        diag = getattr(candidate, "diag", None)
+        if diag is not None and getattr(diag, "constraint_name", None):
+            return diag.constraint_name
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Endpoint
+# ---------------------------------------------------------------------------
 
 @router.post("/register/team")
-async def register_team_production_hardened(
+async def register_team(
     request: Request,
     idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
-    db: AsyncSession = Depends(get_db_async)
+    db: AsyncSession = Depends(get_db_async),
 ):
-    """
-    Production registration endpoint (dynamic form + files).
+    # 1. Validate everything before touching the database or Cloudinary.
+    if not idempotency_key or not _UUID_PATTERN.fullmatch(idempotency_key.strip()):
+        return _validation_error("Idempotency-Key header must be a UUID", "Idempotency-Key")
+    key = idempotency_key.strip().lower()
 
-    Accepts flattened multipart fields from the frontend:
-      - team_name, church_name, captain_name, ...
-      - pastor_letter (file), payment_receipt (file), group_photo (file)
-      - player_0_name, player_0_role, player_0_aadhar_file, player_0_subscription_file, ...
-    Idempotency: Idempotency-Key header supported.
-    Email sending removed (non-blocking / disabled).
-    """
+    form = await request.form()
 
-    request_id = getattr(request.state, "request_id", "unknown")
-    client_ip = request.client.host if request.client else "unknown"
+    receipt = _file(form, "payment_receipt")
+    if receipt is None:
+        return _validation_error("Payment receipt is required", "payment_receipt", ErrorCode.PAYMENT_RECEIPT_REQUIRED)
+    try:
+        await validate_file(receipt, "Payment receipt")
+    except ValidationError as exc:
+        return _validation_error(exc.message, "payment_receipt", exc.error_code)
+
+    player_keys, player_error = _player_fields(form)
+    if player_error:
+        return _validation_error(player_error, "players", ErrorCode.PLAYER_NAME_INVALID)
+    if not MIN_PLAYERS <= len(player_keys) <= MAX_PLAYERS:
+        return _validation_error(
+            f"Team must have between {MIN_PLAYERS} and {MAX_PLAYERS} players (got {len(player_keys)})",
+            "players",
+            ErrorCode.PLAYER_COUNT_INVALID,
+        )
 
     try:
-        # -------------------------------
-        # IDEMPOTENCY CHECK
-        # -------------------------------
-        if idempotency_key:
-            logger.info(f"[{request_id}] Checking idempotency key: {idempotency_key}")
-            existing = await check_idempotency_key(db, idempotency_key)
-            if existing:
-                logger.warning(f"[{request_id}] Duplicate submission detected (idempotency)")
-                try:
-                    payload = json.loads(existing)
-                    return JSONResponse(status_code=409, content=payload)
-                except Exception:
-                    return JSONResponse(
-                        status_code=409,
-                        content={
-                            "success": True,
-                            "team_name": "UNKNOWN",
-                            "message": "This request has already been processed. Please wait for admin confirmation.",
-                            "player_count": 0,
-                            "registration_status": "pending"
-                        }
-                    )
+        values = _validate_fields(form, player_keys)
+    except ValidationError as exc:
+        return _validation_error(exc.message, exc.field, exc.error_code)
 
-        StructuredLogger.log_registration_started(request_id, "unknown-team", client_ip)
+    fingerprint = _fingerprint(values, await _sha256(receipt))
 
-        # -------------------------------
-        # READ FORM ONCE
-        # -------------------------------
-        # IMPORTANT: Call request.form() exactly once — it consumes the body.
-        form = await request.form()
+    # 2. Idempotency.
+    try:
+        record_id, early = await _claim_key(db, key, fingerprint)
+    except Exception:
+        await db.rollback()
+        logger.exception("Could not claim idempotency key %s", key)
+        return _error(ErrorCode.DATABASE_ERROR, "Registration could not be saved", status=500)
+    if early is not None:
+        return early
 
-        # Debug: show incoming form keys for quick troubleshooting
-        form_keys = list(form.keys())
-        logger.info(f"[{request_id}] Received {len(form_keys)} form keys: {form_keys}")
+    # 3. Church check before any upload (the UNIQUE index stays as the final guard).
+    try:
+        taken = (await db.execute(
+            text("SELECT 1 FROM teams WHERE church_name_normalized = :n LIMIT 1"),
+            {"n": values["church_name_normalized"]},
+        )).first()
+        await db.commit()  # end the read transaction; nothing stays open during the upload
+    except Exception:
+        await db.rollback()
+        logger.exception("Church check failed for key %s", key)
+        await _mark_failed(db, record_id, ErrorCode.DATABASE_ERROR, "Registration could not be saved")
+        return _error(ErrorCode.DATABASE_ERROR, "Registration could not be saved", status=500)
+    if taken:
+        await _mark_failed(db, record_id, ErrorCode.CHURCH_ALREADY_REGISTERED, "Church already registered")
+        return _church_taken(values["church_name"])
 
-        # -------------------------------
-        # EXTRACT TEAM & CONTACT FIELDS
-        # -------------------------------
-        def get_text(key: str) -> Optional[str]:
-            v = form.get(key)
-            if v is None:
-                return None
-            if isinstance(v, str):
-                return v.strip()
-            # If it's an UploadFile for some reason, return filename string
-            if hasattr(v, "filename"):
-                return getattr(v, "filename", None)
-            return str(v).strip()
+    # 4. Upload with no transaction or lock held.
+    try:
+        receipt_url = await _upload_receipt(receipt, key)
+    except Exception:
+        logger.exception("Payment receipt upload failed for key %s", key)
+        await _mark_failed(db, record_id, ErrorCode.FILE_UPLOAD_FAILED, "Payment receipt upload failed")
+        return _error(ErrorCode.FILE_UPLOAD_FAILED, "Payment receipt upload failed. Please try again.", status=503)
 
-        def get_file(key: str) -> Optional[UploadFile]:
-            v = form.get(key)
-            if v is None:
-                return None
-            # starlette UploadFile will have attribute 'filename'
-            if hasattr(v, "filename"):
-                return v  # type: ignore
-            return None
+    # 5. One short transaction.
+    team_id = None
+    try:
+        number = (await db.execute(
+            text("UPDATE team_sequence SET last_number = last_number + 1 WHERE id = 1 RETURNING last_number")
+        )).scalar_one_or_none()
+        if number is None:
+            raise RuntimeError("team_sequence row id=1 is missing (run scripts/migrate_2027.py)")
+        team_id = f"ICCT-{number:03d}"
 
-        # Required team/captain fields (validate below)
-        team_name = get_text("team_name")
-        church_name = get_text("church_name")
+        db.add(Team(
+            team_id=team_id,
+            team_name=values["team_name"],
+            church_name=values["church_name"],
+            church_name_normalized=values["church_name_normalized"],
+            captain_name=values["captain_name"],
+            captain_phone=values["captain_phone"],
+            captain_email=values["captain_email"],
+            captain_whatsapp=values["captain_whatsapp"],
+            vice_captain_name=values["vice_name"],
+            vice_captain_phone=values["vice_phone"],
+            vice_captain_email=values["vice_email"],
+            vice_captain_whatsapp=values["vice_whatsapp"],
+            payment_receipt=receipt_url,
+            registration_status="pending",
+        ))
+        await db.flush()
+        for index, name in enumerate(values["players"], start=1):
+            db.add(Player(player_id=f"{team_id}-P{index:02d}", team_id=team_id, name=name))
 
-        captain_name = get_text("captain_name")
-        captain_phone = get_text("captain_phone")
-        captain_email = get_text("captain_email")
-        captain_whatsapp = get_text("captain_whatsapp")
-
-        vice_name = get_text("vice_name")
-        vice_phone = get_text("vice_phone")
-        vice_email = get_text("vice_email")
-        vice_whatsapp = get_text("vice_whatsapp")
-
-        # Files
-        pastor_letter = get_file("pastor_letter")
-        payment_receipt = get_file("payment_receipt")
-        group_photo = get_file("group_photo")
-
-        # -------------------------------
-        # VALIDATE FIELDS
-        # -------------------------------
-        logger.info(f"[{request_id}] Validating team and contact fields...")
-        try:
-            if not team_name:
-                raise ValidationError("team_name", "Team name is required")
-            validated_team_name = validate_team_name(team_name)
-
-            if not church_name:
-                raise ValidationError("church_name", "Church name is required")
-            validated_church_name = validate_name(church_name, "Church name")
-
-            validated_captain_name = validate_name(captain_name or "", "Captain name")
-            validated_captain_phone = validate_phone(captain_phone or "", "Captain phone")
-            validated_captain_email = validate_email(captain_email or "", "Captain email")
-            validated_captain_whatsapp = validate_phone(captain_whatsapp or "", "Captain WhatsApp")
-
-            validated_vice_name = validate_name(vice_name or "", "Vice-captain name")
-            validated_vice_phone = validate_phone(vice_phone or "", "Vice-captain phone")
-            validated_vice_email = validate_email(vice_email or "", "Vice-captain email")
-            validated_vice_whatsapp = validate_phone(vice_whatsapp or "", "Vice-captain WhatsApp")
-
-            # Validate required pastor_letter file if present
-            if not pastor_letter:
-                raise ValidationError("pastor_letter", "Pastor letter (file) is required")
-            # Use your validate_file utility to check size/mime
-            await validate_file(pastor_letter, "Pastor letter")
-
-            if payment_receipt:
-                await validate_file(payment_receipt, "Payment receipt")
-            if group_photo:
-                await validate_file(group_photo, "Group photo")
-
-            logger.info(f"[{request_id}] ✅ Field validation passed")
-        except ValidationError as e:
-            StructuredLogger.log_validation_error(request_id, e.field, e.message)
-            return create_validation_error(e.field, e.message)
-
-        # -------------------------------
-        # EXTRACT PLAYERS (dynamic)
-        # -------------------------------
-        logger.info(f"[{request_id}] Extracting players from form (dynamic fields)...")
-        players: List[Dict[str, Any]] = []
-        idx = 0
-        # We'll accept contiguous indices starting at 0 until a name field is missing.
-        while True:
-            name_key = f"player_{idx}_name"
-            role_key = f"player_{idx}_role"
-            aadhar_key = f"player_{idx}_aadhar_file"
-            subs_key = f"player_{idx}_subscription_file"
-
-            name_val = get_text(name_key)
-            if not name_val:
-                break
-
-            role_val = get_text(role_key) or ""
-            aadhar_file = get_file(aadhar_key)
-            subs_file = get_file(subs_key)
-
-            logger.info(
-                f"[{request_id}] player_{idx}: name='{name_val}', role='{role_val}', "
-                f"aadhar={'PRESENT' if aadhar_file else 'MISSING'}, subscription={'PRESENT' if subs_file else 'MISSING'}"
-            )
-
-            # Basic validation per player
-            try:
-                if len(name_val) < 2:
-                    raise ValidationError(name_key, f"Player {idx+1} name too short")
-                # Role is optional - only validate if provided
-                if role_val and role_val not in ["Batsman", "Bowler", "All-Rounder", "Wicket-Keeper", ""]:
-                    raise ValidationError(role_key, f"Player {idx+1} role must be one of: Batsman, Bowler, All-Rounder, Wicket-Keeper (or leave empty)")
-                # Validate files if present
-                if aadhar_file:
-                    await validate_file(aadhar_file, f"player_{idx}_aadhar_file")
-                if subs_file:
-                    await validate_file(subs_file, f"player_{idx}_subscription_file")
-            except ValidationError as e:
-                StructuredLogger.log_validation_error(request_id, e.field, e.message)
-                return create_validation_error(e.field, e.message)
-
-            players.append({
-                "index": idx,
-                "name": name_val,
-                "role": role_val,
-                "aadhar_file": aadhar_file,
-                "subscription_file": subs_file
-            })
-            idx += 1
-
-        logger.info(f"[{request_id}] ✅ Players detected: {len(players)}")
-
-        # -------------------------------
-        # PRE-VALIDATE CAPTAIN EMAIL
-        # -------------------------------
-        logger.info(f"[{request_id}] Checking captain email uniqueness...")
-        from sqlalchemy import select
-        existing_captain = await db.execute(
-            select(Team).where(Team.captain_email == validated_captain_email)
+        response = {
+            "success": True,
+            "data": {"registration_status": "pending", "team_id": team_id, "team_name": values["team_name"]},
+            "message": "Registration submitted successfully",
+        }
+        completed = await db.execute(
+            text("""
+                UPDATE idempotency_keys SET state = 'completed', team_id = :team_id, response_data = :data
+                 WHERE id = :id AND state = 'processing'
+            """),
+            {"id": record_id, "team_id": team_id, "data": json.dumps(response)},
         )
-        if existing_captain.scalar():
-            logger.warning(f"[{request_id}] ❌ Captain email already registered: {validated_captain_email}")
-            return create_error_response(
-                ErrorCode.DUPLICATE_CAPTAIN_EMAIL,
-                "This captain email is already used to register a team",
-                {"email": validated_captain_email},
-                409
-            )
-
-        # -------------------------------
-        # GENERATE TEAM ID (ATOMIC, NO RETRY)
-        # -------------------------------
-        logger.info(f"[{request_id}] Generating team ID...")
-        team_id = await generate_next_team_id(db)
-        logger.info(f"[{request_id}] ✅ Generated team_id: {team_id}")
-        
-        # -------------------------------
-        # CHECK CLOUDINARY CONFIGURATION
-        # -------------------------------
-        if not settings.CLOUDINARY_ENABLED:
-            logger.error(f"[{request_id}] ❌ CLOUDINARY NOT CONFIGURED!")
-            logger.error(f"[{request_id}] Please set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET in .env file")
-            logger.error(f"[{request_id}] See docs/CLOUDINARY_SETUP.md for instructions")
-            return create_error_response(
-                ErrorCode.VALIDATION_ERROR,
-                "File upload service not configured. Please contact administrator.",
-                {"error": "Cloudinary credentials missing"},
-                503
-            )
-        
-        # -------------------------------
-        # UPLOAD TEAM FILES TO CLOUDINARY
-        # -------------------------------
-        logger.info(f"[{request_id}] Uploading team files to Cloudinary...")
-        uploaded_urls = {}
-        
-        try:
-            # Upload pastor letter (required)
-            logger.info(f"[{request_id}] Uploading pastor_letter...")
-            pastor_url = await upload_with_retry(
-                pastor_letter,
-                folder=f"pending/{team_id}",
-                public_id=f"{team_id}_pastor_letter",
-                resource_type="auto"
-            )
-            uploaded_urls["pastor_letter"] = pastor_url
-            logger.info(f"[{request_id}] ✅ pastor_letter: {pastor_url}")
-            StructuredLogger.log_file_upload(request_id, "pastor_letter", "success", pastor_url)
-
-            # Upload payment receipt (optional)
-            receipt_url = None
-            if payment_receipt:
-                logger.info(f"[{request_id}] Uploading payment_receipt...")
-                receipt_url = await upload_with_retry(
-                    payment_receipt,
-                    folder=f"pending/{team_id}",
-                    public_id=f"{team_id}_payment_receipt",
-                    resource_type="auto"
-                )
-                uploaded_urls["payment_receipt"] = receipt_url
-                logger.info(f"[{request_id}] ✅ payment_receipt: {receipt_url}")
-                StructuredLogger.log_file_upload(request_id, "payment_receipt", "success", receipt_url)
-
-            # Upload group photo (optional)
-            photo_url = None
-            if group_photo:
-                logger.info(f"[{request_id}] Uploading group_photo...")
-                photo_url = await upload_with_retry(
-                    group_photo,
-                    folder=f"pending/{team_id}",
-                    public_id=f"{team_id}_group_photo",
-                    resource_type="auto"
-                )
-                uploaded_urls["group_photo"] = photo_url
-                logger.info(f"[{request_id}] ✅ group_photo: {photo_url}")
-                StructuredLogger.log_file_upload(request_id, "group_photo", "success", photo_url)
-
-            logger.info(f"[{request_id}] ✅ All team files uploaded successfully")
-            
-        except CloudinaryUploadError as e:
-            logger.error(f"[{request_id}] ❌ Cloudinary upload failed: {e}")
-            StructuredLogger.log_file_upload(request_id, "team_files", "failed", str(e))
-            return create_upload_error("team files", str(e))
-        except Exception as e:
-            logger.error(f"[{request_id}] ❌ Unexpected upload error: {e}")
-            return create_internal_error("File upload failed", {"error": str(e)})
-        
-        # -------------------------------
-        # INSERT TEAM AND PLAYERS (SINGLE TRANSACTION)
-        # -------------------------------
-        logger.info(f"[{request_id}] Inserting team and players...")
-        
-        try:
-            # CHECK CHURCH TEAM LIMIT (with row-level locking)
-            # This validation runs within the transaction to prevent race conditions
-            logger.info(f"[{request_id}] Validating church team limit...")
-            await validate_church_limit(db, validated_church_name, request_id)
-            logger.info(f"[{request_id}] Church limit validation passed")
-            
-            # Create team
-            team = Team(
-                team_id=team_id,
-                team_name=validated_team_name,
-                church_name=validated_church_name,
-                captain_name=validated_captain_name,
-                captain_phone=validated_captain_phone,
-                captain_email=validated_captain_email,
-                captain_whatsapp=validated_captain_whatsapp,
-                vice_captain_name=validated_vice_name,
-                vice_captain_phone=validated_vice_phone,
-                vice_captain_email=validated_vice_email,
-                vice_captain_whatsapp=validated_vice_whatsapp,
-                pastor_letter=pastor_url,
-                payment_receipt=receipt_url,
-                group_photo=photo_url,
-                registration_date=datetime.utcnow(),
-                created_at=datetime.utcnow()
-            )
-            db.add(team)
-            logger.info(f"[{request_id}] ✅ Team added to session")
-            
-            # Create players with Cloudinary uploads
-            player_list = []
-            for p in players:
-                player_num = p["index"] + 1
-                player_id = f"{team_id}-P{player_num:02d}"
-
-                # Upload player files to Cloudinary
-                aadhar_url = None
-                subs_url = None
-
-                try:
-                    if p["aadhar_file"]:
-                        logger.info(f"[{request_id}] Uploading player {player_num} aadhar...")
-                        aadhar_url = await upload_with_retry(
-                            p["aadhar_file"],
-                            folder=f"pending/{team_id}/players",
-                            public_id=f"{player_id}_aadhar",
-                            resource_type="auto"
-                        )
-                        uploaded_urls[f"player_{p['index']}_aadhar"] = aadhar_url
-                        logger.info(f"[{request_id}] ✅ Player {player_num} aadhar: {aadhar_url}")
-                        StructuredLogger.log_file_upload(request_id, f"player_{p['index']}_aadhar", "success", aadhar_url)
-
-                    if p["subscription_file"]:
-                        logger.info(f"[{request_id}] Uploading player {player_num} subscription...")
-                        subs_url = await upload_with_retry(
-                            p["subscription_file"],
-                            folder=f"pending/{team_id}/players",
-                            public_id=f"{player_id}_subscription",
-                            resource_type="auto"
-                        )
-                        uploaded_urls[f"player_{p['index']}_subscription"] = subs_url
-                        logger.info(f"[{request_id}] ✅ Player {player_num} subscription: {subs_url}")
-                        StructuredLogger.log_file_upload(request_id, f"player_{p['index']}_subscription", "success", subs_url)
-                        
-                except CloudinaryUploadError as e:
-                    logger.error(f"[{request_id}] ❌ Player {player_num} file upload failed: {e}")
-                    # Cleanup already uploaded files
-                    await cleanup_cloudinary_uploads(uploaded_urls, team_id, request_id)
-                    return create_upload_error(f"player {player_num} files", str(e))
-                except Exception as e:
-                    logger.error(f"[{request_id}] ❌ Unexpected error uploading player {player_num} files: {e}")
-                    await cleanup_cloudinary_uploads(uploaded_urls, team_id, request_id)
-                    return create_internal_error(f"Player {player_num} file upload failed", {"error": str(e)})
-
-                # Create player object after successful uploads
-                player = Player(
-                    player_id=player_id,
-                    team_id=team_id,
-                    name=p["name"],
-                    role=p["role"],
-                    aadhar_file=aadhar_url,
-                    subscription_file=subs_url,
-                    created_at=datetime.utcnow()
-                )
-                player_list.append(player)
-            
-            db.add_all(player_list)
-            logger.info(f"[{request_id}] ✅ {len(player_list)} players added to session")
-            
-            # Commit transaction
-            await db.commit()
-            logger.info(f"[{request_id}] ✅ Transaction committed successfully")
-            StructuredLogger.log_db_operation(request_id, "insert", "success", team_id)
-
-        except IntegrityError as e:
+        if completed.rowcount != 1:
+            # Another request took this key over after it went stale. It owns the
+            # key and the same upload path now, so don't touch either.
             await db.rollback()
-            logger.error(f"[{request_id}] ❌ IntegrityError: {e}")
-            
-            # Cleanup uploaded files since database insert failed
-            logger.warning(f"[{request_id}] Database insert failed, cleaning up {len(uploaded_urls)} uploaded files...")
-            await cleanup_cloudinary_uploads(uploaded_urls, team_id, request_id)
-            
-            # Handle specific integrity errors
-            if "teams_team_id_key" in str(e):
-                return create_error_response(
-                    ErrorCode.DUPLICATE_TEAM_ID,
-                    "Team ID collision. Please retry.",
-                    {"team_id": team_id},
-                    500
-                )
-            
-            if "captain_email" in str(e).lower() or "uq_team_name_captain_phone" in str(e):
-                return create_error_response(
-                    ErrorCode.DUPLICATE_CAPTAIN_EMAIL,
-                    "Captain email or team name already registered",
-                    {},
-                    409
-                )
-            
-            return create_error_response(
-                ErrorCode.DATABASE_ERROR,
-                "Database error during registration",
-                {"error": str(e)},
-                500
-            )
-        
-        except HTTPException as http_exc:
-            # Church limit validation or other HTTP exceptions
-            await db.rollback()
-            logger.warning(f"[{request_id}] ❌ Request rejected: {http_exc.detail}")
-            
-            # Cleanup uploaded files
-            await cleanup_cloudinary_uploads(uploaded_urls, team_id, request_id)
-            
-            # Return the HTTP exception as-is (preserve status code and detail)
-            return JSONResponse(
-                status_code=http_exc.status_code,
-                content={"success": False, "detail": http_exc.detail}
-            )
+            return _in_progress()
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        await _delete_receipt(key)
+        constraint = _constraint_name(exc)
+        if constraint == CHURCH_UNIQUE_CONSTRAINT:
+            await _mark_failed(db, record_id, ErrorCode.CHURCH_ALREADY_REGISTERED, "Church already registered")
+            return _church_taken(values["church_name"])
+        if constraint in _OTHER_UNIQUE:
+            field, message = _OTHER_UNIQUE[constraint]
+            await _mark_failed(db, record_id, ErrorCode.VALIDATION_ERROR, message)
+            return _validation_error(message, field, "ALREADY_REGISTERED")
+        logger.exception("Integrity error saving registration (constraint=%s)", _constraint_name(exc))
+        await _mark_failed(db, record_id, ErrorCode.DATABASE_ERROR, "Registration could not be saved")
+        return _error(ErrorCode.DATABASE_ERROR, "Registration could not be saved", status=500)
+    except Exception:
+        await db.rollback()
+        await _delete_receipt(key)
+        logger.exception("Unexpected registration failure (team_id=%s)", team_id)
+        await _mark_failed(db, record_id, ErrorCode.DATABASE_ERROR, "Registration could not be saved")
+        return _error(ErrorCode.DATABASE_ERROR, "Registration could not be saved", status=500)
 
-        except Exception as e:
-            await db.rollback()
-            logger.exception(f"[{request_id}] ❌ Unexpected database error: {e}")
-            
-            # Cleanup uploaded files on any database error
-            logger.warning(f"[{request_id}] Unexpected error, cleaning up {len(uploaded_urls)} uploaded files...")
-            await cleanup_cloudinary_uploads(uploaded_urls, team_id, request_id)
-            
-            StructuredLogger.log_exception(request_id, e)
-            return create_error_response(
-                ErrorCode.DATABASE_ERROR,
-                "Unexpected error during registration",
-                {"error": str(e)},
-                500
-            )
-
-        # -------------------------------
-        # STORE IDEMPOTENCY RESPONSE
-        # -------------------------------
-        if idempotency_key:
-            try:
-                payload = json.dumps({
-                    "success": True,
-                    "team_name": validated_team_name,
-                    "message": "Registration submitted successfully. Please wait for admin confirmation.",
-                    "player_count": len(players),
-                    "registration_status": "pending"
-                })
-                await store_idempotency_key(db, idempotency_key, payload)
-            except Exception as e:
-                logger.warning(f"[{request_id}] Failed to store idempotency key: {e}")
-
-        # -------------------------------
-        # RETURN SUCCESS
-        # -------------------------------
-        logger.info(f"[{request_id}] ✅ Registration complete: {team_id}")
-        return JSONResponse(
-            status_code=201,
-            content={
-                "success": True,
-                "team_name": validated_team_name,
-                "message": "Registration submitted successfully. Please wait for admin confirmation.",
-                "player_count": len(players),
-                "registration_status": "pending"
-            }
-        )
-
-    except Exception as e:
-        logger.exception(f"[{request_id}] ❌ Unexpected error: {e}")
-        StructuredLogger.log_exception(request_id, e)
-        return create_internal_error("An unexpected error occurred during registration", {"exception_type": type(e).__name__})
+    # No email here: the team is only emailed once an admin approves it
+    # (PUT /admin/teams/{team_id}/confirm).
+    return JSONResponse(status_code=201, content=response)

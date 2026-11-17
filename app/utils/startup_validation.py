@@ -24,14 +24,14 @@ async def validate_database_schema(db: AsyncSession) -> dict:
         "checks": []
     }
     
-    logger.info("🔍 Starting database schema validation...")
+    logger.debug("🔍 Starting database schema validation...")
     
     # Check 1: teams.id has DEFAULT gen_random_uuid()
     try:
         query = text("""
             SELECT column_name, column_default, is_nullable, data_type
             FROM information_schema.columns
-            WHERE table_name = 'teams' AND column_name = 'id'
+            WHERE table_schema = current_schema() AND table_name = 'teams' AND column_name = 'id'
         """)
         result = await db.execute(query)
         row = result.mappings().first()
@@ -47,7 +47,7 @@ async def validate_database_schema(db: AsyncSession) -> dict:
                     "status": "✅ PASS",
                     "details": f"Column: {row['data_type']}, Default: {row['column_default']}, Nullable: {row['is_nullable']}"
                 })
-                logger.info("✅ teams.id has DEFAULT gen_random_uuid() - NULL constraint errors prevented")
+                logger.debug("✅ teams.id has DEFAULT gen_random_uuid() - NULL constraint errors prevented")
             else:
                 error = f"teams.id configuration issue - Default: {row['column_default']}, Nullable: {row['is_nullable']}, Type: {row['data_type']}"
                 results["errors"].append(error)
@@ -80,7 +80,7 @@ async def validate_database_schema(db: AsyncSession) -> dict:
         query = text("""
             SELECT column_name, column_default, is_nullable, data_type
             FROM information_schema.columns
-            WHERE table_name = 'teams' AND column_name = 'registration_status'
+            WHERE table_schema = current_schema() AND table_name = 'teams' AND column_name = 'registration_status'
         """)
         result = await db.execute(query)
         row = result.mappings().first()
@@ -93,7 +93,7 @@ async def validate_database_schema(db: AsyncSession) -> dict:
                 "status": "✅ PASS",
                 "details": f"Type: {row['data_type']}, Default: {row['column_default']}, Nullable: {row['is_nullable']}"
             })
-            logger.info(f"✅ registration_status column found - Type: {row['data_type']}, Default: {row['column_default']}")
+            logger.debug(f"✅ registration_status column found - Type: {row['data_type']}, Default: {row['column_default']}")
             
             if not has_default:
                 warning = "registration_status has no default value - may cause issues"
@@ -123,7 +123,9 @@ async def validate_database_schema(db: AsyncSession) -> dict:
             FROM information_schema.table_constraints tc
             JOIN information_schema.key_column_usage kcu 
                 ON tc.constraint_name = kcu.constraint_name
-            WHERE tc.table_name = 'teams' 
+                AND tc.table_schema = kcu.table_schema
+            WHERE tc.table_schema = current_schema()
+                AND tc.table_name = 'teams'
                 AND kcu.column_name = 'team_id'
                 AND tc.constraint_type = 'UNIQUE'
         """)
@@ -136,7 +138,7 @@ async def validate_database_schema(db: AsyncSession) -> dict:
                 "status": "✅ PASS",
                 "details": f"UNIQUE constraint exists (prevents duplicate ICCT-XXX)"
             })
-            logger.info("✅ teams.team_id has UNIQUE constraint - duplicate team_id prevented")
+            logger.debug("✅ teams.team_id has UNIQUE constraint - duplicate team_id prevented")
         else:
             warning = "teams.team_id may not have UNIQUE constraint - duplicate IDs possible"
             results["warnings"].append(warning)
@@ -161,7 +163,7 @@ async def validate_database_schema(db: AsyncSession) -> dict:
             "status": "✅ PASS",
             "details": "Team ID generation function available"
         })
-        logger.info("✅ generate_next_team_id() function exists")
+        logger.debug("✅ generate_next_team_id() function exists")
         
     except ImportError as e:
         error = "generate_next_team_id() function not found - team registration will fail"
@@ -179,7 +181,7 @@ async def validate_database_schema(db: AsyncSession) -> dict:
         query = text("""
             SELECT table_name 
             FROM information_schema.tables 
-            WHERE table_name = 'team_sequence'
+            WHERE table_schema = current_schema() AND table_name = 'team_sequence'
         """)
         result = await db.execute(query)
         row = result.first()
@@ -190,7 +192,7 @@ async def validate_database_schema(db: AsyncSession) -> dict:
                 "status": "✅ PASS",
                 "details": "Sequential team ID generation table present"
             })
-            logger.info("✅ team_sequence table exists for ICCT-001, ICCT-002 generation")
+            logger.debug("✅ team_sequence table exists for ICCT-001, ICCT-002 generation")
         else:
             warning = "team_sequence table not found - team ID generation may fail"
             results["warnings"].append(warning)
@@ -211,7 +213,7 @@ async def validate_database_schema(db: AsyncSession) -> dict:
         query = text("""
             SELECT column_name
             FROM information_schema.columns
-            WHERE table_name = 'teams' AND column_name IN ('status', 'registration_status')
+            WHERE table_schema = current_schema() AND table_name = 'teams' AND column_name IN ('status', 'registration_status')
             ORDER BY column_name
         """)
         result = await db.execute(query)
@@ -232,32 +234,17 @@ async def validate_database_schema(db: AsyncSession) -> dict:
                 "status": "✅ PASS",
                 "details": "Only registration_status column exists (correct)"
             })
-            logger.info("✅ No duplicate status columns - using registration_status")
+            logger.debug("✅ No duplicate status columns - using registration_status")
         
     except Exception as e:
         error = f"Failed to check duplicate columns: {str(e)}"
         results["warnings"].append(error)
         logger.warning(f"⚠️ {error}")
     
-    # Summary
-    logger.info("=" * 60)
-    logger.info("📋 STARTUP VALIDATION SUMMARY")
-    logger.info("=" * 60)
-    logger.info(f"Status: {'✅ VALID' if results['valid'] else '❌ INVALID'}")
-    logger.info(f"Checks passed: {len([c for c in results['checks'] if '✅' in c['status']])}/{len(results['checks'])}")
-    
-    if results["errors"]:
-        logger.error(f"Errors: {len(results['errors'])}")
-        for error in results["errors"]:
-            logger.error(f"  - {error}")
-    
-    if results["warnings"]:
-        logger.warning(f"Warnings: {len(results['warnings'])}")
-        for warning in results["warnings"]:
-            logger.warning(f"  - {warning}")
-    
-    logger.info("=" * 60)
-    
+    passed = len([c for c in results["checks"] if "PASS" in c["status"]])
+    logger.debug(f"Schema validation: {passed}/{len(results['checks'])} checks passed, "
+                 f"{len(results['errors'])} errors, {len(results['warnings'])} warnings")
+
     return results
 
 
@@ -277,7 +264,7 @@ def validate_database_service_methods():
         "methods": []
     }
     
-    logger.info("🔍 Validating DatabaseService methods...")
+    logger.debug("🔍 Validating DatabaseService methods...")
     
     required_methods = [
         "get_team_by_team_id",
@@ -294,7 +281,7 @@ def validate_database_service_methods():
                 "method": method_name,
                 "status": "✅ AVAILABLE"
             })
-            logger.info(f"✅ DatabaseService.{method_name}() available")
+            logger.debug(f"✅ DatabaseService.{method_name}() available")
         else:
             error = f"Missing method: DatabaseService.{method_name}()"
             results["errors"].append(error)
@@ -304,13 +291,6 @@ def validate_database_service_methods():
                 "status": "❌ MISSING"
             })
             logger.error(f"❌ {error}")
-    
-    logger.info("=" * 60)
-    logger.info("📋 DATABASESERVICE VALIDATION SUMMARY")
-    logger.info("=" * 60)
-    logger.info(f"Status: {'✅ VALID' if results['valid'] else '❌ INVALID'}")
-    logger.info(f"Methods available: {len([m for m in results['methods'] if '✅' in m['status']])}/{len(required_methods)}")
-    logger.info("=" * 60)
     
     return results
 
@@ -329,14 +309,14 @@ async def validate_sequence_table(db: AsyncSession) -> dict:
         "checks": []
     }
     
-    logger.info("🔍 Validating team_sequence table...")
+    logger.debug("🔍 Validating team_sequence table...")
     
     try:
         # Check 1: Table exists
         query = text("""
             SELECT EXISTS(
                 SELECT 1 FROM information_schema.tables 
-                WHERE table_name = 'team_sequence'
+                WHERE table_schema = current_schema() AND table_name = 'team_sequence'
             )
         """)
         result = await db.execute(query)
@@ -358,13 +338,13 @@ async def validate_sequence_table(db: AsyncSession) -> dict:
                 "check": "team_sequence table exists",
                 "status": "✅ PASS"
             })
-            logger.info("✅ team_sequence table exists")
+            logger.debug("✅ team_sequence table exists")
         
         # Check 2: Columns exist and have correct types
         query = text("""
             SELECT column_name, data_type, is_nullable
             FROM information_schema.columns
-            WHERE table_name = 'team_sequence'
+            WHERE table_schema = current_schema() AND table_name = 'team_sequence'
             ORDER BY ordinal_position
         """)
         result = await db.execute(query)
@@ -395,7 +375,7 @@ async def validate_sequence_table(db: AsyncSession) -> dict:
                         "status": "✅ PASS",
                         "details": f"Type: {actual_type}"
                     })
-                    logger.info(f"✅ Column {col_name}: {actual_type}")
+                    logger.debug(f"✅ Column {col_name}: {actual_type}")
                 else:
                     error = f"Column {col_name} has wrong type: {actual_type} (expected {expected_type})"
                     results["errors"].append(error)
@@ -413,7 +393,7 @@ async def validate_sequence_table(db: AsyncSession) -> dict:
                 "status": "✅ PASS",
                 "details": f"Current sequence: {row}"
             })
-            logger.info(f"✅ Initial sequence row exists (current: {row}, next: ICCT-{row + 1:03d})")
+            logger.debug(f"✅ Initial sequence row exists (current: {row}, next: ICCT-{row + 1:03d})")
         else:
             warning = "Initial sequence row (id=1) not found - will be created on first use"
             results["warnings"].append(warning)

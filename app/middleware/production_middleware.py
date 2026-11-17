@@ -36,28 +36,13 @@ class RequestTimeoutMiddleware(BaseHTTPMiddleware):
             
             # Log request duration
             duration = time.time() - start_time
-            logger.info(
-                f"Request completed",
-                extra={
-                    "method": request.method,
-                    "path": request.url.path,
-                    "status": response.status_code,
-                    "duration_ms": round(duration * 1000, 2)
-                }
-            )
+            logger.debug(f"{request.method} {request.url.path} finished within timeout ({duration * 1000:.0f}ms)")
             
             return response
             
         except asyncio.TimeoutError:
             duration = time.time() - start_time
-            logger.error(
-                f"Request timeout exceeded ({settings.REQUEST_TIMEOUT}s)",
-                extra={
-                    "method": request.method,
-                    "path": request.url.path,
-                    "duration_ms": round(duration * 1000, 2)
-                }
-            )
+            logger.error(f"{request.method} {request.url.path} TIMEOUT after {duration:.1f}s (limit {settings.REQUEST_TIMEOUT}s)")
             return Response(
                 content='{"success": false, "error_code": "REQUEST_TIMEOUT", "message": "Request timeout exceeded"}',
                 status_code=408,
@@ -80,15 +65,7 @@ class BodySizeLimitMiddleware(BaseHTTPMiddleware):
             content_length = int(request.headers["content-length"])
             
             if content_length > settings.MAX_REQUEST_SIZE:
-                logger.warning(
-                    f"Request body exceeds size limit",
-                    extra={
-                        "method": request.method,
-                        "path": request.url.path,
-                        "size": content_length,
-                        "max_size": settings.MAX_REQUEST_SIZE
-                    }
-                )
+                logger.warning(f"{request.method} {request.url.path} rejected: body {content_length} bytes > limit {settings.MAX_REQUEST_SIZE}")
                 return Response(
                     content='{"success": false, "error_code": "BODY_TOO_LARGE", "message": "Request body too large"}',
                     status_code=413,
@@ -138,14 +115,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         
         # Check rate limit (for non-exempt paths)
         if len(self.requests[client_ip]) >= self.requests_per_minute:
-            logger.warning(
-                f"Rate limit exceeded for IP",
-                extra={
-                    "ip": client_ip,
-                    "requests_in_minute": len(self.requests[client_ip]),
-                    "path": request.url.path
-                }
-            )
+            logger.warning(f"Rate limit exceeded: ip={client_ip} path={request.url.path} ({len(self.requests[client_ip])} req/min)")
             return Response(
                 content='{"success": false, "error_code": "RATE_LIMIT_EXCEEDED", "message": "Too many requests. Please try again later."}',
                 status_code=429,
@@ -168,28 +138,16 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         start_time = time.time()
         
         # Log request start
-        logger.info(
-            f"Request started",
-            extra={
-                "method": request.method,
-                "path": request.url.path,
-                "client_ip": request.client.host if request.client else "unknown"
-            }
-        )
+        client_ip = request.client.host if request.client else "unknown"
+        logger.debug(f"--> {request.method} {request.url.path} from {client_ip}")
         
         response = await call_next(request)
         
         # Log response
         duration = time.time() - start_time
-        logger.info(
-            f"Request completed",
-            extra={
-                "method": request.method,
-                "path": request.url.path,
-                "status": response.status_code,
-                "duration_ms": round(duration * 1000, 2)
-            }
-        )
+        status_code = response.status_code
+        level = logging.ERROR if status_code >= 500 else logging.WARNING if status_code >= 400 else logging.INFO
+        logger.log(level, f"{request.method} {request.url.path} -> {status_code} ({duration * 1000:.0f}ms) ip={client_ip}")
         
         return response
 
@@ -207,6 +165,8 @@ def setup_middleware(app):
         allow_credentials=settings.CORS_ALLOW_CREDENTIALS,
         allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         allow_headers=["*"],
+        # Lets the browser read Retry-After on 409 REQUEST_IN_PROGRESS.
+        expose_headers=["Retry-After"],
     )
     
     # Gzip compression

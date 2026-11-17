@@ -43,7 +43,7 @@ class DatabaseHealthCheck:
             try:
                 async with engine.connect() as conn:
                     await conn.execute(text("SELECT 1"))
-                    logger.info(f"Database ready (attempt {attempt})")
+                    logger.debug(f"Database ready (attempt {attempt})")
                     return True
             except Exception as e:
                 logger.warning(
@@ -170,7 +170,7 @@ async def setup_database_healthcheck(engine: AsyncEngine):
     """
     Startup event: Check database connectivity.
     """
-    logger.info("Starting database health check...")
+    logger.debug("Starting database health check...")
     
     is_healthy = await DatabaseHealthCheck.check_with_retry(engine)
     
@@ -180,13 +180,13 @@ async def setup_database_healthcheck(engine: AsyncEngine):
             "Check DATABASE_URL and database server status."
         )
     
-    logger.info("Database health check completed successfully")
+    logger.debug("Database health check completed successfully")
 
 
 async def teardown_database(engine: AsyncEngine):
     """
     Shutdown event: Cleanup database connections.
     """
-    logger.info("Disposing database connections...")
+    logger.debug("Disposing database connections...")
     await engine.dispose()
-    logger.info("Database connections disposed")
+    logger.debug("Database connections disposed")

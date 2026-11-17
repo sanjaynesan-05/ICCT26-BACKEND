@@ -26,8 +26,7 @@ from dotenv import load_dotenv
 load_dotenv('.env.local')
 load_dotenv()
 
-# Setup logger
-logging.basicConfig(level=logging.INFO)
+# Logger (handlers/format are configured centrally in app.utils.structured_logging)
 logger = logging.getLogger("database")
 
 # ============================================================
@@ -42,7 +41,16 @@ DATABASE_URL = os.getenv(
 if not DATABASE_URL:
     raise RuntimeError("❌ DATABASE_URL environment variable not set!")
 
-logger.info(f"🔗 Database URL loaded: {DATABASE_URL[:60]}...")
+
+
+def get_masked_db_target() -> str:
+    """Return 'host/dbname' for logs - never the credentials."""
+    try:
+        from sqlalchemy.engine import make_url
+        u = make_url(DATABASE_URL)
+        return f"{u.host or '?'}/{u.database or '?'}"
+    except Exception:
+        return "<unparseable DATABASE_URL>"
 
 
 # ============================================================
@@ -92,7 +100,6 @@ def get_async_database_url() -> str:
 # ============================================================
 
 SYNC_DATABASE_URL = get_sync_database_url()
-logger.info(f"⚙️  Sync URL: {SYNC_DATABASE_URL[:60]}...")
 
 sync_engine = create_engine(
     SYNC_DATABASE_URL,
@@ -117,7 +124,6 @@ SessionLocal = sessionmaker(
 # ============================================================
 
 ASYNC_DATABASE_URL = get_async_database_url()
-logger.info(f"⚙️  Async URL: {ASYNC_DATABASE_URL[:60]}...")
 
 async_engine = create_async_engine(
     ASYNC_DATABASE_URL,
@@ -187,6 +193,4 @@ async def get_db_async():
 # Logging
 # ============================================================
 
-logger.info("✅ Database configuration loaded successfully")
-logger.info(f"   Sync engine: {type(sync_engine).__name__}")
-logger.info(f"   Async engine: {type(async_engine).__name__}")
+logger.debug("Database engines created (sync + async) for %s", get_masked_db_target())
