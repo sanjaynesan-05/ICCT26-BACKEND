@@ -113,9 +113,22 @@ def cloud(monkeypatch):
     monkeypatch.setattr(route, "_upload_receipt", fake.upload)
     monkeypatch.setattr(route, "_delete_receipt", fake.delete)
 
-    async def no_email(values, team_id):
-        return None
-    monkeypatch.setattr(route, "_send_received_email", no_email)
+    # Record every email instead of sending it. Registration must send none;
+    # only admin approval may email the team.
+    fake.emails = []
+
+    async def record_email(to_email, subject, body, **kwargs):
+        fake.emails.append({"to": to_email, "subject": subject, "body": body})
+        return True
+    from app.utils import email_reliable
+    monkeypatch.setattr(email_reliable, "send_email_with_retry", record_email)
+
+    # Admin confirm moves files pending -> confirmed; don't hit Cloudinary.
+    from app.utils.cloudinary_upload import cloudinary_uploader
+
+    async def fake_move(team_id, file_field_name):
+        return f"https://res.cloudinary.com/test/image/upload/icct27/confirmed/{team_id}/{file_field_name}.png"
+    monkeypatch.setattr(cloudinary_uploader, "move_to_confirmed", fake_move)
     return fake
 
 
@@ -123,9 +136,11 @@ def cloud(monkeypatch):
 async def client(db_conn, cloud):
     from app.routes.churches import router as churches_router
     from app.routes.registration_production import router as registration_router
+    from app.routes.admin import router as admin_router
 
     app = FastAPI()
     app.include_router(registration_router, prefix="/api")
+    app.include_router(admin_router, prefix="/admin")
     app.include_router(churches_router)
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as c:
         yield c

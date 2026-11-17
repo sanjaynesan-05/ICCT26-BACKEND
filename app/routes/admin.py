@@ -240,19 +240,28 @@ async def confirm_team_registration(
         
         logger.info(f"✅ Files moved to confirmed folder: {list(confirmed_urls.keys())}")
         
-        # Step 4: Confirm team using DatabaseService (updates status and URLs)
-        success = await DatabaseService.confirm_team_registration(
+        # Step 4: Atomically confirm (updates status and URLs). Only the request that
+        # actually moves the team to 'confirmed' sends the email, so a double click
+        # on "Approve" can never email the team twice.
+        outcome = await DatabaseService.confirm_team_once(
             db=db,
             team_id=team_id,
             new_cloudinary_urls=confirmed_urls
         )
-        
-        if not success:
-            raise HTTPException(status_code=500, detail="Failed to confirm team in database")
-        
+
+        if outcome == "not_found":
+            raise HTTPException(status_code=404, detail=f"Team not found: {team_id}")
+        if outcome == "already_confirmed":
+            logger.info(f"Team {team_id} was confirmed by a concurrent request - not emailing again")
+            return JSONResponse(content={
+                "success": True,
+                "message": f"Team {team_id} is already confirmed",
+                "data": {"teamId": team_id, "status": "confirmed", "alreadyConfirmed": True}
+            })
+
         logger.info(f"✅ Updated {team_id} status to confirmed")
-        
-        # Step 5: Get team details to send email
+
+        # Step 5: Team is now confirmed in the DB -> send the approval email
         team_data = await DatabaseService.get_team_details(db, team_id)
         email_status = "not_sent"
         
@@ -288,8 +297,9 @@ async def confirm_team_registration(
                     players=players
                 )
                 
-                # Send email asynchronously
-                email_sent = await EmailService.send_email_async_if_available(
+                # Send with retries (10s SMTP timeout, plain-text fallback part)
+                from app.utils.email_reliable import send_email_with_retry
+                email_sent = await send_email_with_retry(
                     to_email=captain_email,
                     subject=f"✅ Registration Confirmed - {team_name} - Team ID: {team_id}",
                     body=email_html
@@ -301,6 +311,8 @@ async def confirm_team_registration(
                     logger.info(f"✅ Confirmation email sent to {captain_email} for team {team_id}")
                 else:
                     logger.warning(f"⚠️  Failed to send confirmation email to {captain_email}")
+            else:
+                logger.warning(f"Team {team_id} confirmed but has no captain email - approval email not sent")
         
         logger.info(f"✅ Successfully confirmed registration for team: {team_id}")
         return JSONResponse(content={

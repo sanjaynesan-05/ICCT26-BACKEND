@@ -216,13 +216,22 @@ class EmailService:
         players: List[Dict[str, Any]] = None
     ) -> str:
         """Create HTML email template for admin approval confirmation"""
-        
+        from html import escape
+
+        # Every value below comes from the registration form - escape before templating.
+        def _e(value) -> str:
+            return escape(str(value)) if value else ""
+
+        team_name, captain_name, team_id, church_name = _e(team_name), _e(captain_name), _e(team_id), _e(church_name)
+        vice_captain_name, vice_captain_phone, vice_captain_email = _e(vice_captain_name), _e(vice_captain_phone), _e(vice_captain_email)
+        captain_phone, captain_email = _e(captain_phone), _e(captain_email)
+
         # Build players table HTML
         players_html = ""
         if players:
             for idx, player in enumerate(players, 1):
-                player_id = player.get('playerId', 'N/A')
-                player_name = player.get('name', 'N/A')
+                player_id = _e(player.get('playerId')) or 'N/A'
+                player_name = _e(player.get('name')) or 'N/A'
                 players_html += f"""
                 <tr>
                     <td style="padding: 12px; border-bottom: 1px solid #eee; text-align: center;">{idx}</td>
@@ -671,43 +680,63 @@ class DatabaseService:
         Returns:
             True if successful, False if team not found
         """
-        from models import Team
-        
-        logger.info(f"Confirming team registration for: {team_id}")
+        outcome = await DatabaseService.confirm_team_once(db, team_id, new_cloudinary_urls)
+        return outcome != "not_found"
+
+    @staticmethod
+    async def confirm_team_once(
+        db: AsyncSession,
+        team_id: str,
+        new_cloudinary_urls: dict = None
+    ) -> str:
+        """
+        Atomically move a team to 'confirmed'.
+
+        Returns:
+            "confirmed"          - this call changed the status (caller should send the approval email)
+            "already_confirmed"  - another call confirmed it first (do NOT email again)
+            "not_found"          - no such team
+
+        A single conditional UPDATE makes this race-safe: if the admin clicks
+        "Approve" twice, only one request gets "confirmed", so only one email goes out.
+        """
+        urls = new_cloudinary_urls or {}
         try:
-            team = await DatabaseService.get_team_by_team_id(db, team_id)
-            
-            if not team:
-                logger.warning(f"❌ Cannot confirm - team not found: {team_id}")
-                return False
-            
-            # Check if already confirmed
-            if team.registration_status == "confirmed":
-                logger.info(f"ℹ️ Team {team_id} is already confirmed")
-                return True
-            
-            # Update Cloudinary URLs if provided
-            if new_cloudinary_urls:
-                if "payment_receipt" in new_cloudinary_urls:
-                    team.payment_receipt = new_cloudinary_urls["payment_receipt"]
-                if "pastor_letter" in new_cloudinary_urls:
-                    team.pastor_letter = new_cloudinary_urls["pastor_letter"]
-                if "group_photo" in new_cloudinary_urls:
-                    team.group_photo = new_cloudinary_urls["group_photo"]
-                logger.info(f"Updated Cloudinary URLs: {list(new_cloudinary_urls.keys())}")
-            
-            # Update status to confirmed
-            team.registration_status = "confirmed"
-            db.add(team)
+            result = await db.execute(
+                text("""
+                    UPDATE teams
+                       SET registration_status = 'confirmed',
+                           payment_receipt = COALESCE(:payment_receipt, payment_receipt),
+                           pastor_letter   = COALESCE(:pastor_letter, pastor_letter),
+                           group_photo     = COALESCE(:group_photo, group_photo)
+                     WHERE team_id = :team_id
+                       AND registration_status IS DISTINCT FROM 'confirmed'
+                    RETURNING team_id
+                """),
+                {
+                    "team_id": team_id,
+                    "payment_receipt": urls.get("payment_receipt"),
+                    "pastor_letter": urls.get("pastor_letter"),
+                    "group_photo": urls.get("group_photo"),
+                },
+            )
+            changed = result.first() is not None
             await db.commit()
-            
-            logger.info(f"✅ Team {team_id} confirmed successfully")
-            return True
-            
         except Exception as e:
             await db.rollback()
-            logger.error(f"Error confirming team registration: {str(e)}")
+            logger.error(f"Error confirming team registration {team_id}: {e}")
             raise
+
+        if changed:
+            logger.info(f"Team {team_id} confirmed")
+            return "confirmed"
+
+        exists = await db.execute(text("SELECT 1 FROM teams WHERE team_id = :team_id"), {"team_id": team_id})
+        if exists.first() is None:
+            logger.warning(f"Cannot confirm - team not found: {team_id}")
+            return "not_found"
+        logger.info(f"Team {team_id} was already confirmed")
+        return "already_confirmed"
 
     @staticmethod
     async def get_team_details(db: AsyncSession, team_id: str) -> Dict[str, Any]:

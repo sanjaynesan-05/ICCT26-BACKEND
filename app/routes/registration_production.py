@@ -8,7 +8,7 @@ Flow:
   4. Upload the receipt to {CLOUDINARY_PREFIX}/pending/{idempotency_key}/payment_receipt.
      No database transaction or lock is open during the upload.
   5. One short transaction: next team number, team + players, key -> completed.
-  6. Best-effort "registration received" email after the response is sent.
+  6. No email is sent at registration; the team is emailed only after admin approval.
 """
 
 import hashlib
@@ -22,7 +22,6 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from starlette.background import BackgroundTask
 from starlette.datastructures import FormData, UploadFile
 
 from config.churches import build_church_lookup, normalize_church_name, parse_church_list
@@ -289,31 +288,6 @@ async def _delete_receipt(idempotency_key: str) -> None:
         logger.exception("Receipt cleanup failed for key %s", idempotency_key)
 
 
-async def _send_received_email(values: Dict[str, Any], team_id: str) -> None:
-    """Best effort: never raises."""
-    try:
-        from app.utils.email_reliable import create_registration_email, send_email_with_retry
-        body = create_registration_email(
-            team_name=values["team_name"],
-            team_id=team_id,
-            church_name=values["church_name"],
-            captain={
-                "name": values["captain_name"], "phone": values["captain_phone"],
-                "email": values["captain_email"], "whatsapp": values["captain_whatsapp"],
-            },
-            vice_captain={
-                "name": values["vice_name"], "phone": values["vice_phone"],
-                "email": values["vice_email"], "whatsapp": values["vice_whatsapp"],
-            },
-            players=values["players"],  # player_0, player_1, ... = registration order
-        )
-        await send_email_with_retry(
-            values["captain_email"], f"ICCT registration received - {values['team_name']}", body
-        )
-    except Exception:
-        logger.exception("Registration email failed for %s (registration is saved)", team_id)
-
-
 def _constraint_name(exc: IntegrityError) -> Optional[str]:
     orig = exc.orig
     for candidate in (orig, getattr(orig, "__cause__", None)):
@@ -471,5 +445,6 @@ async def register_team(
         await _mark_failed(db, record_id, ErrorCode.DATABASE_ERROR, "Registration could not be saved")
         return _error(ErrorCode.DATABASE_ERROR, "Registration could not be saved", status=500)
 
-    # 6. Email after the response; failures are logged only.
-    return JSONResponse(status_code=201, content=response, background=BackgroundTask(_send_received_email, values, team_id))
+    # No email here: the team is only emailed once an admin approves it
+    # (PUT /admin/teams/{team_id}/confirm).
+    return JSONResponse(status_code=201, content=response)
