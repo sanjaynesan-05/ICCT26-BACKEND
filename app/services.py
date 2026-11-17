@@ -586,8 +586,8 @@ class DatabaseService:
             query = text("""
                 SELECT t.id, t.team_id, t.team_name, t.church_name, 
                        t.payment_receipt, t.pastor_letter, t.group_photo, t.created_at,
-                       t.captain_name, t.captain_phone, t.captain_email,
-                       t.vice_captain_name, t.vice_captain_phone, t.vice_captain_email,
+                       t.captain_name, t.captain_phone, t.captain_email, t.captain_whatsapp,
+                       t.vice_captain_name, t.vice_captain_phone, t.vice_captain_email, t.vice_captain_whatsapp,
                        t.registration_status,
                        COUNT(p.id) as player_count
                 FROM teams t
@@ -608,9 +608,11 @@ class DatabaseService:
                     "captainName": row["captain_name"],
                     "captainPhone": row["captain_phone"],
                     "captainEmail": row["captain_email"],
+                    "captainWhatsapp": row["captain_whatsapp"],
                     "viceCaptainName": row["vice_captain_name"],
                     "viceCaptainPhone": row["vice_captain_phone"],
                     "viceCaptainEmail": row["vice_captain_email"],
+                    "viceCaptainWhatsapp": row["vice_captain_whatsapp"],
                     "playerCount": row["player_count"],
                     "registrationDate": str(row["created_at"]) if row["created_at"] else None,
                     "registrationStatus": row.get("registration_status", "pending"),
@@ -746,8 +748,8 @@ class DatabaseService:
         try:
             team_query = text("""
                 SELECT id, team_id, team_name, church_name, payment_receipt, pastor_letter, group_photo, created_at,
-                       captain_name, captain_phone, captain_email,
-                       vice_captain_name, vice_captain_phone, vice_captain_email,
+                       captain_name, captain_phone, captain_email, captain_whatsapp,
+                       vice_captain_name, vice_captain_phone, vice_captain_email, vice_captain_whatsapp,
                        registration_status
                 FROM teams
                 WHERE team_id = :team_id
@@ -781,12 +783,14 @@ class DatabaseService:
                     "captain": {
                         "name": team_data["captain_name"],
                         "phone": team_data["captain_phone"],
-                        "email": team_data["captain_email"]
+                        "email": team_data["captain_email"],
+                        "whatsapp": team_data["captain_whatsapp"]
                     } if team_data["captain_name"] else None,
                     "viceCaptain": {
                         "name": team_data["vice_captain_name"],
                         "phone": team_data["vice_captain_phone"],
-                        "email": team_data["vice_captain_email"]
+                        "email": team_data["vice_captain_email"],
+                        "whatsapp": team_data["vice_captain_whatsapp"]
                     } if team_data["vice_captain_name"] else None,
                     "paymentReceipt": team_data["payment_receipt"],
                     "pastorLetter": team_data["pastor_letter"],
